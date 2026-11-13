@@ -15,6 +15,8 @@ import OAuth2 from './OAuth2';
 import NTLMAuth from './NTLMAuth';
 import OAuth1 from './Oauth1';
 import Button from 'ui/Button';
+import AuthPresets from 'components/RequestPane/Auth/AuthPresets';
+import { updateCollectionAuth } from 'providers/ReduxStore/slices/collections';
 
 const Auth = ({ collection }) => {
   const authMode = collection.draft?.root ? get(collection, 'draft.root.request.auth.mode') : get(collection, 'root.request.auth.mode');
@@ -66,6 +68,7 @@ const Auth = ({ collection }) => {
       <div className="flex flex-grow justify-start items-center">
         <AuthMode collection={collection} />
       </div>
+      <AuthPresets key={authMode} authMode={authMode} collection={collection} updateAuth={updateCollectionAuth} />
       {getAuthView()}
       <div className="mt-6">
         <Button type="submit" size="sm" onClick={handleSave}>

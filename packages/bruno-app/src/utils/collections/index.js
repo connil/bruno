@@ -1318,9 +1318,10 @@ export const getEnvironmentVariablesMasked = (collection) => {
 
 const getPathParams = (item) => {
   let pathParams = {};
-  if (item && item.request && item.request.params) {
-    item.request.params.forEach((param) => {
-      if (param.type === 'path' && param.name && param.value) {
+  const params = item?.draft ? item.draft.request?.params : item?.request?.params;
+  if (params) {
+    params.forEach((param) => {
+      if (param.type === 'path' && param.enabled !== false && param.name && param.value) {
         pathParams[param.name] = param.value;
       }
     });

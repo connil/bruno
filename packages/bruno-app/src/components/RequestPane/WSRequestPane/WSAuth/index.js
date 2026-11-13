@@ -6,6 +6,7 @@ import BearerAuth from '../../Auth/BearerAuth';
 import BasicAuth from '../../Auth/BasicAuth';
 import ApiKeyAuth from '../../Auth/ApiKeyAuth';
 import InheritedAuth, { InheritedAuthSourceLabel } from '../../Auth/InheritedAuth';
+import AuthPresets from '../../Auth/AuthPresets';
 import { getEffectiveAuthSource } from 'utils/auth';
 import { updateRequestAuthMode, updateAuth } from 'providers/ReduxStore/slices/collections';
 
@@ -82,6 +83,7 @@ const WSAuth = ({ item, collection }) => {
     <div className="w-full overflow-y-scroll">
       <div className="flex flex-col items-start gap-2 mb-4 min-w-0">
         <WSAuthMode item={item} collection={collection} />
+        {authMode !== 'oauth2' && <AuthPresets key={authMode} authMode={authMode} item={item} collection={collection} updateAuth={updateAuth} />}
         {authMode === 'inherit' && inheritedSource ? (
           <InheritedAuthSourceLabel
             collection={collection}

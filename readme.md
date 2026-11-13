@@ -155,6 +155,22 @@ For variants, tag matrix, environment files, and CI examples (GitHub Actions, Gi
 
 ## Features
 
+### URL preview
+
+HTTP and GraphQL requests show a discreet URL preview below the request URL row. The preview
+resolves variables and enabled path parameters and updates as the URL, path parameters, or query
+parameters change, without modifying the editable URL.
+
+### Authentication presets
+
+In a request, folder, or collection's **Auth** tab, choose Basic Auth, Bearer Token, API Key, or OAuth 2.0
+and select **Apply Auth Preset**. The available presets depend on the selected method and replace
+its current configuration after confirmation. They refer to credential variables rather than storing
+credentials: define those variables or edit the Auth fields, then save. Folder and collection
+authentication applies to requests configured to inherit auth.
+OAuth 2.0 presets cover Authorization Code (with or without PKCE), Client Credentials, and the
+legacy Password and Implicit grants. OAuth 2.0 is not supported for WebSocket requests.
+
 ### Run across multiple platforms 🖥️
 
 ![bruno](assets/images/run-anywhere.png) <br /><br />

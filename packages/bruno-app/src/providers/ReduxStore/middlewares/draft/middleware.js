@@ -10,6 +10,8 @@ const actionsToIntercept = [
   'collections/deleteQueryParam',
   'collections/setQueryParams',
   'collections/updatePathParam',
+  'collections/duplicatePathParam',
+  'collections/deletePathParam',
   'collections/addRequestHeader',
   'collections/updateRequestHeader',
   'collections/deleteRequestHeader',

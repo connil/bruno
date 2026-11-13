@@ -219,7 +219,7 @@ const StyledWrapper = styled.div`
     line-height: 1;
     text-overflow: clip;
 
-    input[type='checkbox'] {
+    input[type='checkbox'], input[type='radio'] {
       vertical-align: baseline;
       display: inline-block;
     }
@@ -251,7 +251,7 @@ const StyledWrapper = styled.div`
     }
   }
 
-  input[type='checkbox'] {
+  input[type='checkbox'], input[type='radio'] {
     cursor: pointer;
     width: 14px;
     height: 14px;

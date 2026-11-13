@@ -17,6 +17,7 @@ import {
   getBulkActionsSelection,
   getUniqueTagsFromItems,
   getCollectionVersion,
+  getAllVariables,
   isCollectionItemCollapsed,
   getVariableNamesWithScope,
   getWorkspaceCollections,
@@ -24,6 +25,41 @@ import {
   getCloneDisplayName
 } from './index';
 import * as platformUtils from 'utils/common/platform';
+
+describe('getAllVariables path parameters', () => {
+  const savedParams = [
+    { uid: 'p1', name: 'id', value: 'first', type: 'path', enabled: true },
+    { uid: 'p2', name: 'id', value: 'second', type: 'path', enabled: false }
+  ];
+
+  it('uses the enabled draft duplicate instead of the saved selection', () => {
+    const item = {
+      uid: 'item1',
+      type: 'http-request',
+      request: { params: savedParams },
+      draft: { request: { params: savedParams.map((param) => ({ ...param, enabled: !param.enabled })) } }
+    };
+
+    expect(getAllVariables({ items: [item] }, item).pathParams).toEqual({ id: 'second' });
+  });
+
+  it('does not fall back to saved values when all draft duplicates are disabled', () => {
+    const item = {
+      uid: 'item1',
+      type: 'http-request',
+      request: { params: savedParams },
+      draft: { request: { params: savedParams.map((param) => ({ ...param, enabled: false })) } }
+    };
+
+    expect(getAllVariables({ items: [item] }, item).pathParams).toEqual({});
+  });
+
+  it('uses saved path parameters when there is no draft', () => {
+    const item = { uid: 'item1', type: 'http-request', request: { params: savedParams } };
+
+    expect(getAllVariables({ items: [item] }, item).pathParams).toEqual({ id: 'first' });
+  });
+});
 
 describe('mergeHeaders', () => {
   it('should include headers from collection, folder and request (with correct precedence)', () => {

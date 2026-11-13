@@ -957,6 +957,18 @@ headers {
     expect(output).toEqual(input);
   });
 
+  it('parseAndSerialise - json sourced roundtrip check - params:path with duplicate names and disabled entries', () => {
+    const input = {
+      params: [
+        { name: 'userId', value: '123', enabled: false, type: 'path' },
+        { name: 'userId', value: '456', enabled: true, type: 'path' }
+      ]
+    };
+    const bru = jsonToBru(input);
+    expect(bru).toContain('~userId: 123');
+    expect(parser(bru)).toEqual(input);
+  });
+
   it('parseAndSerialise - bru sourced roundtrip check - metadata', () => {
     const input = `metadata {
   @description('''trace id''')

@@ -1199,7 +1199,7 @@ export const collectionsSlice = createSlice({
 
           const disabledQueryParams = filter(item?.draft?.request?.params, (p) => !p.enabled && p.type === 'query');
           let enabledQueryParams = filter(item?.draft?.request?.params, (p) => p.enabled && p.type === 'query');
-          let oldPathParams = filter(item?.draft?.request?.params, (p) => p.enabled && p.type === 'path');
+          let oldPathParams = filter(item?.draft?.request?.params, (p) => p.type === 'path');
           let newPathParams = [];
 
           // try and connect as much as old params uid's as possible
@@ -1508,7 +1508,58 @@ export const collectionsSlice = createSlice({
             if ('enabled' in action.payload.pathParam) {
               param.enabled = action.payload.pathParam.enabled;
             }
+
+            // only one path param per name may be enabled
+            if (param.enabled !== false) {
+              each(item.draft.request.params, (p) => {
+                if (p.type === 'path' && p.name === param.name && p.uid !== param.uid) {
+                  p.enabled = false;
+                }
+              });
+            }
           }
+        }
+      }
+    },
+    duplicatePathParam: (state, action) => {
+      const collection = findCollectionByUid(state.collections, action.payload.collectionUid);
+
+      if (collection) {
+        const item = findItemInCollection(collection, action.payload.itemUid);
+
+        if (item && isItemARequest(item)) {
+          if (!item.draft) {
+            item.draft = cloneDeep(item);
+          }
+
+          const params = item.draft.request.params;
+          const index = params.findIndex((p) => p.uid === action.payload.paramUid && p.type === 'path');
+
+          if (index !== -1) {
+            params.splice(index + 1, 0, { ...params[index], uid: uuid(), enabled: false });
+          }
+        }
+      }
+    },
+    deletePathParam: (state, action) => {
+      const collection = findCollectionByUid(state.collections, action.payload.collectionUid);
+
+      if (collection) {
+        const item = findItemInCollection(collection, action.payload.itemUid);
+
+        if (item && isItemARequest(item)) {
+          if (!item.draft) {
+            item.draft = { ...item, request: { ...item.request } };
+          }
+
+          const params = item.draft.request.params;
+          const param = find(params, (p) => p.uid === action.payload.paramUid && p.type === 'path');
+
+          if (!param || !params.some((candidate) => candidate.type === 'path' && candidate.name === param.name && candidate.uid !== param.uid)) {
+            return;
+          }
+
+          item.draft.request.params = filter(params, (p) => p.uid !== param.uid);
         }
       }
     },
@@ -4388,6 +4439,8 @@ export const {
   updateQueryParam,
   deleteQueryParam,
   updatePathParam,
+  duplicatePathParam,
+  deletePathParam,
   addRequestHeader,
   updateRequestHeader,
   deleteRequestHeader,

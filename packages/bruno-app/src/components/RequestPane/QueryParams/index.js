@@ -1,11 +1,14 @@
 import React, { useState, useCallback, useRef } from 'react';
 import get from 'lodash/get';
+import { IconCopy, IconTrash } from '@tabler/icons';
 import InfoTip from 'components/InfoTip';
 import { useDispatch, useSelector } from 'react-redux';
 import { useTheme } from 'providers/Theme';
 import {
   moveQueryParam,
   updatePathParam,
+  duplicatePathParam,
+  deletePathParam,
   setQueryParams
 } from 'providers/ReduxStore/slices/collections';
 import { saveRequest, sendRequest } from 'providers/ReduxStore/slices/collections/actions';
@@ -68,6 +71,31 @@ const QueryParams = ({ item, collection }) => {
     },
     [dispatch, pathParams, item.uid, collection.uid]
   );
+
+  const renderPathParamActions = (row) => {
+    const hasSiblings = pathParams.some((param) => param.name === row.name && param.uid !== row.uid);
+    return (
+      <div className="flex items-center gap-2">
+        <button
+          title="Duplicate"
+          data-testid="path-param-duplicate"
+          onClick={() => dispatch(duplicatePathParam({ paramUid: row.uid, itemUid: item.uid, collectionUid: collection.uid }))}
+        >
+          <IconCopy strokeWidth={1.5} size={18} />
+        </button>
+        {hasSiblings && (
+          <button
+            title="Delete"
+            aria-label="Delete path parameter"
+            data-testid="column-delete"
+            onClick={() => dispatch(deletePathParam({ paramUid: row.uid, itemUid: item.uid, collectionUid: collection.uid }))}
+          >
+            <IconTrash strokeWidth={1.5} size={18} />
+          </button>
+        )}
+      </div>
+    );
+  };
 
   const handleQueryParamDrag = useCallback(({ updateReorderedItem }) => {
     dispatch(moveQueryParam({
@@ -221,8 +249,13 @@ const QueryParams = ({ item, collection }) => {
             rows={pathParams}
             onChange={() => {}}
             defaultRow={{}}
-            showCheckbox={false}
-            showDelete={false}
+            onCheckboxChange={(row, checked) => handlePathParamChange(row.uid, 'enabled', checked)}
+            rowConfig={{
+              renderActionCell: renderPathParamActions,
+              actionColumnWidth: 80,
+              checkboxType: 'radio',
+              checkboxName: (row) => JSON.stringify([collection.uid, item.uid, 'path', row.name])
+            }}
             showAddRow={false}
             columnWidths={pathParamsWidths}
             onColumnWidthsChange={(widths) => handleColumnWidthsChange('path-params', widths)}

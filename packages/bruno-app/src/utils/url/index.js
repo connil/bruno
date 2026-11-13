@@ -178,7 +178,7 @@ export const interpolateUrlPathParams = (url, params, variables = {}, options = 
         // traditional path parameters
         if (segment.startsWith(':')) {
           const name = segment.slice(1);
-          const pathParam = params.find((p) => p?.name === name && p?.type === 'path');
+          const pathParam = params.find((p) => p?.name === name && p?.type === 'path' && p?.enabled !== false);
           return hasResolvablePathParamValue(pathParam) ? substituteValue(pathParam.value) : segment;
           // return pathParam ? substituteValue(pathParam.value) : segment;
         }
@@ -202,7 +202,7 @@ export const interpolateUrlPathParams = (url, params, variables = {}, options = 
           name = name.replace(/^[('"`]+/, '');
           if (!name) continue;
 
-          const pathParam = params.find((p) => p?.name === name && p?.type === 'path');
+          const pathParam = params.find((p) => p?.name === name && p?.type === 'path' && p?.enabled !== false);
           if (hasResolvablePathParamValue(pathParam)) {
             result = result.replace(':' + match[1], substituteValue(pathParam.value));
           }

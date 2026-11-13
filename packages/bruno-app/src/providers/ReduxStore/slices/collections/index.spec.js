@@ -25,6 +25,71 @@ const makeStateWith = (item) => ({
   ]
 });
 
+describe('updatePathParam', () => {
+  it('selects one duplicate without changing other path parameter names or query parameters', () => {
+    const params = [
+      { uid: 'p1', name: 'id', value: 'first', type: 'path', enabled: true },
+      { uid: 'p2', name: 'id', value: 'second', type: 'path', enabled: false },
+      { uid: 'p3', name: 'name', value: 'user', type: 'path', enabled: true },
+      { uid: 'q1', name: 'id', value: 'query', type: 'query', enabled: true }
+    ];
+    const item = {
+      uid: 'item1', type: 'http-request', request: { params: [] }, draft: { request: { params } }
+    };
+
+    const next = reducer(makeStateWith(item), collectionsSlice.actions.updatePathParam({
+      collectionUid: 'col1', itemUid: 'item1', pathParam: { ...params[1], enabled: true }
+    }));
+
+    expect(next.collections[0].items[0].draft.request.params).toEqual([
+      { ...params[0], enabled: false },
+      { ...params[1], enabled: true },
+      params[2],
+      params[3]
+    ]);
+  });
+});
+
+describe('deletePathParam', () => {
+  it.each([true, false])('preserves the last path parameter with enabled=%s', (enabled) => {
+    const item = {
+      uid: 'item1',
+      type: 'http-request',
+      request: {
+        url: 'https://example.com/:id',
+        params: [{ uid: 'p1', name: 'id', value: '123', type: 'path', enabled }]
+      }
+    };
+
+    const next = reducer(makeStateWith(item), collectionsSlice.actions.deletePathParam({
+      collectionUid: 'col1', itemUid: 'item1', paramUid: 'p1'
+    }));
+
+    expect(next.collections[0].items[0].draft.request).toEqual({
+      url: item.request.url,
+      params: item.request.params
+    });
+    expect(next.collections[0].items[0].request.params).toEqual(item.request.params);
+  });
+
+  it('deletes only the targeted duplicate from an existing draft', () => {
+    const params = [
+      { uid: 'p1', name: 'id', value: 'first', type: 'path', enabled: false },
+      { uid: 'p2', name: 'id', value: 'second', type: 'path', enabled: true },
+      { uid: 'q1', name: 'id', value: 'query', type: 'query', enabled: true }
+    ];
+    const item = {
+      uid: 'item1', type: 'http-request', request: { params: [] }, draft: { request: { params } }
+    };
+
+    const next = reducer(makeStateWith(item), collectionsSlice.actions.deletePathParam({
+      collectionUid: 'col1', itemUid: 'item1', paramUid: 'p1'
+    }));
+
+    expect(next.collections[0].items[0].draft.request.params).toEqual(params.slice(1));
+  });
+});
+
 const inputVars = [
   { uid: 'v1', name: 'numeric', value: 42, enabled: true, dataType: 'number' },
   { uid: 'v2', name: 'explicit_string', value: 'hi', enabled: true, dataType: 'string' },

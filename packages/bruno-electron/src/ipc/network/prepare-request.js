@@ -419,7 +419,7 @@ const prepareRequest = async (item, collection = {}, abortController) => {
     name: item.name,
     pathname: item.pathname,
     tags: getEffectiveTags(getOwnTags(item), getInheritedTagsFromTreePath(requestTreePath)),
-    pathParams: request.params?.filter((param) => param.type === 'path'),
+    pathParams: request.params?.filter((param) => param.type === 'path' && param.enabled !== false),
     settings,
     responseType: 'arraybuffer'
   };

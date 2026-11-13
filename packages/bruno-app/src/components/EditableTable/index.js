@@ -110,6 +110,9 @@ const EditableTable = React.forwardRef(({
   onFocusRowHandled
 }, ref) => {
   const {
+    actionColumnWidth = 57,
+    checkboxType = 'checkbox',
+    checkboxName,
     isEditable: isRowEditable = defaultIsRowEditable,
     isCheckboxDisabled = defaultIsCheckboxDisabled,
     className: getRowClassName = defaultGetRowClassName,
@@ -482,12 +485,12 @@ const EditableTable = React.forwardRef(({
       {showDelete && (
         <td
           id="delete-column-header"
-          style={{ width: '57px' }}
+          style={{ width: `${actionColumnWidth}px` }}
         >
         </td>
       )}
     </tr>
-  ), [showCheckbox, checkboxLabel, columns, getColumnWidth, resizing, tableHeight, handleResizeStart, showDelete, sortColumn, cycleSortMode, SortIcon, sortLabel, testId, reorderable]);
+  ), [showCheckbox, checkboxLabel, columns, getColumnWidth, resizing, tableHeight, handleResizeStart, showDelete, actionColumnWidth, sortColumn, cycleSortMode, SortIcon, sortLabel, testId, reorderable]);
 
   const itemContent = useCallback((rowIndex, row) => {
     const isEmpty = isLastEmptyRow(row, rowIndex);
@@ -524,7 +527,8 @@ const EditableTable = React.forwardRef(({
             )}
             {!isEmpty && (
               <input
-                type="checkbox"
+                type={checkboxType}
+                name={checkboxName?.(row)}
                 className="mousetrap"
                 data-testid="column-checkbox"
                 checked={row[checkboxKey] ?? true}
@@ -572,7 +576,7 @@ const EditableTable = React.forwardRef(({
         )}
       </>
     );
-  }, [showCheckbox, reorderable, reorderableRowCount, isLastEmptyRow, isRowEditable, renderFullWidthRow, renderActionCell, columns, showDelete, keyColumn, handleDragHandleMouseDown, checkboxKey, disableCheckbox, isCheckboxDisabled, handleCheckboxChange, renderCell, handleRemoveRow]);
+  }, [showCheckbox, reorderable, reorderableRowCount, isLastEmptyRow, isRowEditable, renderFullWidthRow, renderActionCell, columns, showDelete, keyColumn, handleDragHandleMouseDown, checkboxKey, checkboxType, checkboxName, disableCheckbox, isCheckboxDisabled, handleCheckboxChange, renderCell, handleRemoveRow]);
 
   const initialTopMostItemIndex = useRef(
     (focusRow?.uid || focusRow?.name) ? 0 : Math.max(0, Math.floor(initialScroll / ROW_HEIGHT))

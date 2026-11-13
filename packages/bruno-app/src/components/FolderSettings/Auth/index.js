@@ -21,6 +21,7 @@ import Button from 'ui/Button';
 import InheritedAuth, { InheritedAuthSourceLabel } from 'components/RequestPane/Auth/InheritedAuth';
 import { getEffectiveAuthSource } from 'utils/auth';
 import AuthMode from '../AuthMode';
+import AuthPresets from 'components/RequestPane/Auth/AuthPresets';
 import StyledWrapper from './StyledWrapper';
 
 const GrantTypeComponentMap = ({ collection, folder, updateFolderAuth }) => {
@@ -205,6 +206,7 @@ const Auth = ({ collection, folder }) => {
       </div>
       <div className="flex flex-col items-start gap-2 mb-4 min-w-0">
         <AuthMode collection={collection} folder={folder} />
+        <AuthPresets key={authMode} authMode={authMode} item={folder} collection={collection} updateAuth={updateFolderAuth} />
         {authMode === 'inherit' && inheritedSource ? (
           <InheritedAuthSourceLabel collection={collection} inheritedSource={inheritedSource} />
         ) : null}

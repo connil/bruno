@@ -5,6 +5,7 @@ import AuthMode from './AuthMode';
 import { getEffectiveAuthSource } from 'utils/auth';
 import AuthFields from './AuthFields';
 import InheritedAuth, { InheritedAuthSourceLabel } from './InheritedAuth';
+import AuthPresets from './AuthPresets';
 
 const Auth = ({ item, collection }) => {
   const authMode = item.draft ? get(item, 'draft.request.auth.mode') : get(item, 'request.auth.mode');
@@ -38,6 +39,7 @@ const Auth = ({ item, collection }) => {
     <div className="w-full overflow-auto">
       <div className="flex flex-col items-start gap-2 mb-4 min-w-0">
         <AuthMode item={item} collection={collection} />
+        <AuthPresets key={authMode} authMode={authMode} item={item} collection={collection} updateAuth={updateAuth} />
         {authMode === 'inherit' && inheritedSource ? (
           <InheritedAuthSourceLabel collection={collection} inheritedSource={inheritedSource} />
         ) : null}

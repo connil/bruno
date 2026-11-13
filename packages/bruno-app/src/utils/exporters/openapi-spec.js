@@ -264,7 +264,7 @@ export const exportApiSpec = ({ variables, items, name, environments }) => {
 
       // Build known path param names from the params array
       const knownPathParamNames = new Set(
-        params?.filter((p) => p?.type === 'path').map((p) => p?.name) || []
+        params?.filter((p) => p?.type === 'path' && p?.enabled !== false).map((p) => p?.name) || []
       );
 
       const queryParamNames = new Set(params?.filter((p) => p?.type !== 'path').map((p) => p?.name));
@@ -296,7 +296,7 @@ export const exportApiSpec = ({ variables, items, name, environments }) => {
           example: header?.value
         })),
         // Path params from the params array (have values from Bruno)
-        ...params?.filter((p) => p?.type === 'path').map((param) => ({
+        ...params?.filter((p) => p?.type === 'path' && p?.enabled !== false).map((param) => ({
           name: param?.name,
           in: 'path',
           required: true,

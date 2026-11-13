@@ -119,7 +119,7 @@ export const transformUrl = (url, params) => {
 
   // Construct path params.
   postmanUrl.variable = params
-    .filter((param) => param.type === 'path')
+    .filter((param) => param.type === 'path' && param.enabled !== false)
     .map(({ name, value, description }) => ({ key: name, value, description }));
 
   return postmanUrl;
