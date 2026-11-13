@@ -4,6 +4,7 @@ const { GrpcClient } = require('@usebruno/requests');
 const { safeParseJSON, safeStringifyJSON } = require('../../utils/common');
 const { cloneDeep, get } = require('lodash');
 const { preferencesUtil } = require('../../store/preferences');
+const { applyGlobalUserAgent } = require('../../utils/user-agent');
 const { getCertsAndProxyConfig, buildCertsAndProxyConfig } = require('./cert-utils');
 const { interpolateString } = require('./interpolate-string');
 const path = require('node:path');
@@ -244,6 +245,7 @@ const registerGrpcEventHandlers = (window) => {
 
       // Resolve proxy configuration for gRPC
       const grpcProxyConfig = await resolveGrpcProxyConfig(proxyMode, proxyConfig, preparedRequest.url, interpolationOptions);
+      applyGlobalUserAgent(preparedRequest);
 
       const requestSent = {
         type: 'request',
@@ -453,6 +455,7 @@ const registerGrpcEventHandlers = (window) => {
 
       // Resolve proxy configuration for gRPC
       const grpcProxyConfig = await resolveGrpcProxyConfig(proxyMode, proxyConfig, preparedRequest.url, interpolationOptions);
+      applyGlobalUserAgent(preparedRequest);
 
       // Send OAuth credentials update if available
       if (preparedRequest?.oauth2Credentials) {

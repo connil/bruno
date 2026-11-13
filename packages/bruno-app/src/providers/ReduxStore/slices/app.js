@@ -37,6 +37,7 @@ const initialState = {
   activePreferencesTab: 'general',
   preferences: {
     request: {
+      userAgent: '',
       sslVerification: true,
       customCaCertificate: {
         enabled: false,

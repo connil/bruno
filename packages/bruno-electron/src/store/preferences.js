@@ -10,6 +10,7 @@ const { get, merge } = require('lodash');
 
 const defaultPreferences = {
   request: {
+    userAgent: '',
     sslVerification: true,
     customCaCertificate: {
       enabled: false,
@@ -109,6 +110,7 @@ const defaultPreferences = {
 
 const preferencesSchema = Yup.object().shape({
   request: Yup.object().shape({
+    userAgent: Yup.string().max(1024).matches(/^[\t\x20-\x7e\x80-\xff]*$/, 'User-Agent contains invalid HTTP header characters'),
     sslVerification: Yup.boolean(),
     customCaCertificate: Yup.object({
       enabled: Yup.boolean(),
@@ -405,6 +407,9 @@ const savePreferences = async (newPreferences) => {
 };
 
 const preferencesUtil = {
+  getUserAgent: () => {
+    return get(getPreferences(), 'request.userAgent', '').trim();
+  },
   shouldVerifyTls: () => {
     return get(getPreferences(), 'request.sslVerification', true);
   },

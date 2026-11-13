@@ -13,6 +13,7 @@ import { generateSnippet } from '../utils/snippet-generator';
 const CodeView = ({ language, item }) => {
   const { displayedTheme } = useTheme();
   const preferences = useSelector((state) => state.app.preferences);
+  const userAgent = get(preferences, 'request.userAgent', '').trim();
   const { globalEnvironments, activeGlobalEnvironmentUid } = useSelector((state) => state.globalEnvironments);
   const generateCodePrefs = useSelector((state) => state.app.generateCode);
 
@@ -43,6 +44,7 @@ const CodeView = ({ language, item }) => {
       language,
       item,
       collection,
+      userAgent,
       shouldInterpolate: generateCodePrefs.shouldInterpolate
     }).then((result) => {
       if (!cancelled) setSnippet(result);
@@ -50,7 +52,7 @@ const CodeView = ({ language, item }) => {
     return () => {
       cancelled = true;
     };
-  }, [language, item, collection, generateCodePrefs.shouldInterpolate]);
+  }, [language, item, collection, userAgent, generateCodePrefs.shouldInterpolate]);
 
   return (
     <StyledWrapper>

@@ -110,6 +110,12 @@ export const splitOnFirst = (str, char) => {
   return [str.slice(0, index), str.slice(index + 1)];
 };
 
+export const splitUrlQuery = (url) => {
+  const [urlWithoutHash, fragment] = splitOnFirst(url, '#');
+  const [pathname, query] = splitOnFirst(urlWithoutHash, '?');
+  return { pathname, query, hash: fragment === undefined ? '' : `#${fragment}` };
+};
+
 export const isValidUrl = (url) => {
   try {
     new URL(url);

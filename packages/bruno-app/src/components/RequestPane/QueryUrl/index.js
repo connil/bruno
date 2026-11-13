@@ -24,6 +24,7 @@ import SingleLineEditor from 'components/SingleLineEditor';
 import SendButton from 'components/RequestPane/SendButton';
 import { isMacOS } from 'utils/common/platform';
 import { hasRequestChanges } from 'utils/collections';
+import { splitUrlQuery } from 'utils/url';
 import StyledWrapper from './StyledWrapper';
 import GenerateCodeItem from 'components/Sidebar/Collections/Collection/CollectionItem/GenerateCodeItem/index';
 import ToolHint from 'components/ToolHint';
@@ -34,6 +35,8 @@ const QueryUrl = ({ item, collection, handleRun }) => {
   const dispatch = useDispatch();
   const method = item.draft ? get(item, 'draft.request.method') : get(item, 'request.method');
   const url = item.draft ? get(item, 'draft.request.url', '') : get(item, 'request.url', '');
+  const { pathname, hash } = splitUrlQuery(url);
+  const editorUrl = `${pathname}${hash}`;
   const isMac = isMacOS();
   const saveShortcut = isMac ? 'Cmd + S' : 'Ctrl + S';
   const editorRef = useRef(null);
@@ -63,7 +66,8 @@ const QueryUrl = ({ item, collection, handleRun }) => {
       requestUrlChanged({
         itemUid: item.uid,
         collectionUid: collection.uid,
-        url: finalUrl
+        url: finalUrl,
+        preserveQueryParams: splitUrlQuery(finalUrl).query === undefined
       })
     );
 
@@ -409,7 +413,7 @@ const QueryUrl = ({ item, collection, handleRun }) => {
           >
             <SingleLineEditor
               ref={editorRef}
-              value={url}
+              value={editorUrl}
               placeholder="Enter URL or paste a cURL request"
               onSave={(finalValue) => onSave(finalValue)}
               theme={storedTheme}

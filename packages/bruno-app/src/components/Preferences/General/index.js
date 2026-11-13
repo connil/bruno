@@ -11,6 +11,8 @@ import toast from 'react-hot-toast';
 import { IconTrash, IconUpload } from '@tabler/icons';
 import path from 'utils/common/path';
 import { SettingsGroup, CheckboxSetting, SettingsField } from '../SettingsLayout';
+import { getBrunoRuntimeUserAgent } from '@usebruno/common';
+import { version as appVersion } from '../../../../package.json';
 
 const General = () => {
   const preferences = useSelector((state) => state.app.preferences);
@@ -19,6 +21,7 @@ const General = () => {
   const inputFileCaCertificateRef = useRef();
 
   const preferencesSchema = Yup.object().shape({
+    userAgent: Yup.string().max(1024).matches(/^[\t\x20-\x7e\x80-\xff]*$/, 'User-Agent contains invalid HTTP header characters'),
     sslVerification: Yup.boolean(),
     customCaCertificate: Yup.object({
       enabled: Yup.boolean(),
@@ -64,6 +67,7 @@ const General = () => {
 
   const formik = useFormik({
     initialValues: {
+      userAgent: get(preferences, 'request.userAgent', ''),
       sslVerification: preferences.request.sslVerification,
       customCaCertificate: {
         enabled: get(preferences, 'request.customCaCertificate.enabled', false),
@@ -101,6 +105,7 @@ const General = () => {
         ...preferences,
         request: {
           ...preferences.request,
+          userAgent: newPreferences.userAgent,
           sslVerification: newPreferences.sslVerification,
           customCaCertificate: {
             enabled: newPreferences.customCaCertificate.enabled,
@@ -124,7 +129,10 @@ const General = () => {
           defaultLocation: newPreferences.defaultLocation
         }
       }))
-      .catch((err) => console.log(err) && toast.error('Failed to update preferences'));
+      .catch((err) => {
+        console.error(err);
+        toast.error('Failed to update preferences');
+      });
   }, [dispatch, preferences]);
 
   const handleSaveRef = useRef(handleSave);
@@ -311,6 +319,26 @@ const General = () => {
         </SettingsGroup>
 
         <SettingsGroup title="Requests">
+          <SettingsField
+            label="User-Agent"
+            htmlFor="userAgent"
+            hint="Default across all collections. Explicit request, folder, or collection headers take precedence. Leave blank to use the built-in defaults."
+            error={formik.touched.userAgent ? formik.errors.userAgent : undefined}
+          >
+            <input
+              id="userAgent"
+              type="text"
+              name="userAgent"
+              data-testid="general-user-agent-input"
+              className="textbox"
+              autoComplete="off"
+              spellCheck="false"
+              placeholder={getBrunoRuntimeUserAgent(appVersion)}
+              onChange={formik.handleChange}
+              onBlur={formik.handleBlur}
+              value={formik.values.userAgent}
+            />
+          </SettingsField>
           <SettingsField label="Request Timeout (ms)" htmlFor="timeout" error={timeoutError}>
             <input
               id="timeout"

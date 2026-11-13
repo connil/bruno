@@ -1,10 +1,23 @@
 import {
   splitOnFirst,
+  splitUrlQuery,
   parsePathParams,
   interpolateUrl,
   interpolateUrlPathParams,
   prependDefaultScheme
 } from './index';
+
+describe('Url Utils - splitUrlQuery', () => {
+  it.each([
+    ['https://example.com/users?tag=one&tag=two#details', { pathname: 'https://example.com/users', query: 'tag=one&tag=two', hash: '#details' }],
+    ['{{host}}/users?search={{value}}', { pathname: '{{host}}/users', query: 'search={{value}}', hash: '' }],
+    ['{{host ?? "localhost"}}/users#section?details', { pathname: '{{host ?? "localhost"}}/users', query: undefined, hash: '#section?details' }],
+    ['https://example.com/users?', { pathname: 'https://example.com/users', query: '', hash: '' }],
+    ['', { pathname: '', query: undefined, hash: '' }]
+  ])('separates the query without changing the URL bytes: %s', (url, expected) => {
+    expect(splitUrlQuery(url)).toEqual(expected);
+  });
+});
 
 describe('Url Utils - parsePathParams', () => {
   it('should parse path - case 1', () => {

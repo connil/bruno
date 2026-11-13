@@ -51,7 +51,7 @@ const addCurlAuthFlags = (curlCommand, auth) => {
   return curlCommand;
 };
 
-const generateSnippet = async ({ language, item, collection, shouldInterpolate = false }) => {
+const generateSnippet = async ({ language, item, collection, shouldInterpolate = false, userAgent = '' }) => {
   try {
     // Get HTTPSnippet dynamically so mocks can be applied in tests
     const { HTTPSnippet } = require('httpsnippet');
@@ -69,6 +69,11 @@ const generateSnippet = async ({ language, item, collection, shouldInterpolate =
     const mergedHeaders = mergeHeaders(collection, request, requestTreePath);
 
     const settings = item.draft ? get(item, 'draft.settings') : get(item, 'settings');
+    const omitUserAgent = (settings?.omitHeaders || []).some((name) => name.toLowerCase() === 'user-agent');
+    const hasUserAgent = mergedHeaders.some((header) => header.name.toLowerCase() === 'user-agent');
+    if (userAgent && !omitUserAgent && !hasUserAgent) {
+      mergedHeaders.push({ name: 'User-Agent', value: userAgent, enabled: true });
+    }
 
     // buildHar intentionally does NOT resolve `{{var}}` / `:pathParam` in the URL
     const sourceUrl = shouldInterpolate

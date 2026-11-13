@@ -16,7 +16,7 @@ import {
   isItemAFolder,
   isItemARequest
 } from 'utils/collections';
-import { parsePathParams, splitOnFirst } from 'utils/url';
+import { parsePathParams, splitOnFirst, splitUrlQuery } from 'utils/url';
 import { applyScriptEnvVars, getScriptModifiedKeys, preserveVariableUids } from 'utils/environments';
 import { getSubdirectoriesFromRoot } from 'utils/common/platform';
 import toast from 'react-hot-toast';
@@ -1180,18 +1180,31 @@ export const collectionsSlice = createSlice({
 
         if (item && isItemARequest(item)) {
           if (!item.draft) {
-            item.draft = cloneDeep(item);
+            item.draft = {
+              ...item,
+              request: {
+                ...item.request,
+                params: (item.request.params || []).map((param) => ({ ...param }))
+              }
+            };
           }
           item.draft.request.url = action.payload.url;
           item.draft.request.params = item?.draft?.request?.params ?? [];
           item.request.params = item?.request?.params ?? [];
 
-          const parts = splitOnFirst(item?.draft?.request?.url, '?');
-          const urlQueryParams = parseQueryParams(parts[1]);
+          const { pathname, query, hash } = splitUrlQuery(item.draft.request.url);
+          const preserveQueryParams = action.payload.preserveQueryParams === true;
+          const urlQueryParams = preserveQueryParams
+            ? filter(item.draft.request.params, (p) => p.enabled && p.type === 'query')
+            : parseQueryParams(query);
+          if (preserveQueryParams) {
+            const queryString = stringifyQueryParams(urlQueryParams);
+            item.draft.request.url = `${pathname}${queryString ? `?${queryString}` : ''}${hash}`;
+          }
           let urlPathParams = [];
 
           try {
-            urlPathParams = parsePathParams(parts[0]);
+            urlPathParams = parsePathParams(pathname);
           } catch (err) {
             console.error(err);
             toast.error(err.message);

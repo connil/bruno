@@ -123,6 +123,34 @@ describe('Snippet Generator - Simple Tests', () => {
     expect(result).toBe('curl -X POST https://api.example.com/{{endpoint}} -H "Content-Type: application/json" -d \'{"message": "{{greeting}}", "count": {{number}}}\'');
   });
 
+  it.each([
+    [{}, [], 'global-client/1.0'],
+    [{}, [{ name: 'user-agent', value: 'explicit-client/1.0', enabled: true }], 'explicit-client/1.0'],
+    [{ omitHeaders: ['User-Agent'] }, [], null]
+  ])('reflects the global User-Agent, overrides and omissions in generated curl', async (settings, headers, expected) => {
+    const { HTTPSnippet } = jest.requireActual('httpsnippet');
+    require('httpsnippet').HTTPSnippet.mockImplementation((har) => new HTTPSnippet(har));
+    const result = await generateSnippet({
+      language: curlLanguage,
+      item: {
+        ...testRequest,
+        settings,
+        request: { ...testRequest.request, url: 'https://example.com', headers }
+      },
+      collection: testCollection,
+      userAgent: 'global-client/1.0'
+    });
+
+    if (expected) {
+      expect(result).toContain(expected);
+    } else {
+      expect(result.toLowerCase()).not.toContain('user-agent');
+    }
+    if (expected !== 'global-client/1.0') {
+      expect(result).not.toContain('global-client/1.0');
+    }
+  });
+
   it('should interpolate variables when enabled', async () => {
     const result = await generateSnippet({
       language: curlLanguage,

@@ -208,10 +208,11 @@ class SingleLineEditor extends Component {
     if (this.props.theme !== prevProps.theme && this.editor) {
       this.editor.setOption('theme', this.props.theme === 'dark' ? 'monokai' : 'default');
     }
-    if (this.props.value !== prevProps.value && this.props.value !== this.cachedValue && this.editor) {
+    const value = String(this.props.value ?? '');
+    if (value !== this.cachedValue && this.editor) {
       const cursor = this.editor.getCursor();
-      this.cachedValue = String(this.props.value);
-      this.editor.setValue(String(this.props.value) || '');
+      this.cachedValue = value;
+      this.editor.setValue(value);
       this.editor.setCursor(cursor);
       // Re-apply masking after setValue() since it destroys all CodeMirror marks
       if (this.maskedEditor && this.maskedEditor.isEnabled()) {

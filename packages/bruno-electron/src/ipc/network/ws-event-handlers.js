@@ -3,6 +3,7 @@ const { WsClient } = require('@usebruno/requests');
 const { cloneDeep, each, get } = require('lodash');
 const interpolateVars = require('./interpolate-vars');
 const { preferencesUtil } = require('../../store/preferences');
+const { applyGlobalUserAgent } = require('../../utils/user-agent');
 const { getCertsAndProxyConfig } = require('./cert-utils');
 const {
   getEnvVars,
@@ -307,6 +308,7 @@ const registerWsEventHandlers = (window) => {
       try {
         const requestCopy = cloneDeep(request);
         const preparedRequest = await prepareWsRequest(requestCopy, collection, environment, runtimeVariables, {});
+        applyGlobalUserAgent(preparedRequest);
         const connectOnly = options?.connectOnly ?? false;
         const requestSent = {
           type: 'request',

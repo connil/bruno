@@ -18,6 +18,9 @@ const PREFERENCES_FILE = 'preferences.json';
  */
 const defaultPreferences = {
   preferences: {
+    request: {
+      userAgent: ''
+    },
     onboarding: {
       hasLaunchedBefore: true,
       hasSeenWelcomeModal: true,

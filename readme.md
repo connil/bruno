@@ -155,11 +155,25 @@ For variants, tag matrix, environment files, and CI examples (GitHub Actions, Gi
 
 ## Features
 
+### Global User-Agent
+
+Set **Preferences → General → Requests → User-Agent** to use a custom default across all
+collections. It applies to HTTP and GraphQL requests (including collection runs), WebSocket
+handshakes, and gRPC calls and reflection. Explicit request, folder, or collection `User-Agent`
+headers take precedence. Clearing the setting restores the built-in defaults, including
+`bruno-runtime/<version>` for HTTP and GraphQL. gRPC prepends the custom value to its native
+transport identifier. The setting is saved locally and takes effect on new requests or connections.
+
+The CLI does not read desktop preferences; configure a `User-Agent` header on the request,
+folder, or collection when running with `bru run`.
+
 ### URL preview
 
 HTTP and GraphQL requests show a discreet URL preview below the request URL row. The preview
 resolves variables and enabled path parameters and updates as the URL, path parameters, or query
-parameters change, without modifying the editable URL.
+parameters change. Query parameters appear only in the preview and the Params tab, not in the
+editable URL field. Editing the base URL preserves existing query parameters; pasting a full URL
+imports its query parameters. Use the preview's copy button to copy the complete resolved URL.
 
 ### Authentication presets
 

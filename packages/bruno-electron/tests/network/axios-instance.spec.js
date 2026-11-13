@@ -8,6 +8,7 @@ jest.mock('electron', () => ({
 // Mock preferences
 jest.mock('../../src/store/preferences', () => ({
   preferencesUtil: {
+    getUserAgent: jest.fn(() => ''),
     shouldStoreCookies: () => false,
     shouldSendCookies: () => false,
     isSslSessionCachingEnabled: () => true
@@ -34,6 +35,7 @@ const http = require('http');
 const { AxiosHeaders } = require('axios');
 const { measureResponseTime, addDigestInterceptor } = require('@usebruno/requests');
 const { setupProxyAgents } = require('../../src/utils/proxy-util');
+const { preferencesUtil } = require('../../src/store/preferences');
 const { makeAxiosInstance, completeOpenHop } = require('../../src/ipc/network/axios-instance');
 
 function createStubAdapter() {
@@ -76,7 +78,44 @@ describe('axios-instance: default headers', () => {
     expect(stubAdapter.getConfig().headers['User-Agent']).toMatch(/^bruno-runtime\//);
   });
 
+  test('uses the current global User-Agent for newly created request clients', async () => {
+    preferencesUtil.getUserAgent
+      .mockReturnValueOnce('custom-client/1.0')
+      .mockReturnValueOnce('custom-client/2.0')
+      .mockReturnValueOnce('');
+
+    for (const expected of ['custom-client/1.0', 'custom-client/2.0', 'bruno-runtime/1.0.0']) {
+      const adapter = createStubAdapter();
+      await makeAxiosInstance()({ url: 'https://api.example.com/test', method: 'get', adapter });
+      expect(adapter.getConfig().headers['User-Agent']).toBe(expected);
+    }
+  });
+
+  test('sends the global User-Agent on the wire and preserves explicit case-insensitive overrides', async () => {
+    const seenHeaders = [];
+    const server = http.createServer((request, response) => {
+      seenHeaders.push(request.headers);
+      response.end('ok');
+    });
+    await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+    const url = `http://127.0.0.1:${server.address().port}/`;
+
+    try {
+      preferencesUtil.getUserAgent.mockReturnValueOnce('global-client/1.0');
+      const instance = makeAxiosInstance();
+      await instance({ url, method: 'get' });
+      await instance({ url, method: 'get', headers: { 'uSeR-aGeNt': 'request-client/1.0' } });
+
+      expect(seenHeaders.map((headers) => headers['user-agent'])).toEqual([
+        'global-client/1.0', 'request-client/1.0'
+      ]);
+    } finally {
+      await new Promise((resolve) => server.close(resolve));
+    }
+  });
+
   test('omits default headers listed in settings.omitHeaders', async () => {
+    preferencesUtil.getUserAgent.mockReturnValueOnce('global-client/1.0');
     const stubAdapter = createStubAdapter();
     const instance = makeAxiosInstance();
 
@@ -108,6 +147,7 @@ describe('axios-instance: default headers', () => {
   });
 
   test('keeps an explicit User-Agent when omitHeaders also lists User-Agent', async () => {
+    preferencesUtil.getUserAgent.mockReturnValueOnce('global-client/1.0');
     const stubAdapter = createStubAdapter();
     const instance = makeAxiosInstance();
 

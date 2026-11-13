@@ -74,9 +74,9 @@ const HeaderHint = ({ id, text, className, place = 'top', testId, tooltipTestId,
   </>
 );
 
-const getDefaultHeaderValue = (header, requestUrl) => {
+const getDefaultHeaderValue = (header, userAgent) => {
   if (header.name === 'User-Agent') {
-    return getBrunoRuntimeUserAgent(appVersion);
+    return userAgent || getBrunoRuntimeUserAgent(appVersion);
   }
 
   return header.previewValue || '';
@@ -87,8 +87,8 @@ const RequestHeaders = ({ item, collection, addHeaderText }) => {
   const { storedTheme } = useTheme();
   const tabs = useSelector((state) => state.tabs.tabs);
   const activeTabUid = useSelector((state) => state.tabs.activeTabUid);
+  const userAgent = useSelector((state) => get(state, 'app.preferences.request.userAgent', '').trim());
   const headers = item.draft ? get(item, 'draft.request.headers') : get(item, 'request.headers');
-  const request = item.draft ? get(item, 'draft.request') : get(item, 'request');
   const settings = (item.draft ? get(item, 'draft.settings', {}) : get(item, 'settings', {})) || {};
   const isHttpRequest = item.type === 'http-request';
   const [isBulkEditMode, setIsBulkEditMode] = useState(false);
@@ -174,11 +174,11 @@ const RequestHeaders = ({ item, collection, addHeaderText }) => {
       uid: `bruno-default-${normalizedName}`,
       rowType: ROW_TYPE.DEFAULT,
       name: header.name,
-      value: getDefaultHeaderValue(header, request?.url),
+      value: getDefaultHeaderValue(header, userAgent),
       enabled: !omittedHeaderNames.has(normalizedName),
       omittable: header.omittable
     };
-  }), [inheritedHeaders, omittedHeaderNames, request?.url, requestHeaderNames]);
+  }), [inheritedHeaders, omittedHeaderNames, requestHeaderNames, userAgent]);
 
   const allInheritedHeaders = useMemo(
     () => [...inheritedHeaders, ...defaultHeaders],
