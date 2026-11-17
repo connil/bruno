@@ -13,6 +13,8 @@ const BearerAuth = ({ collection }) => {
   const { storedTheme } = useTheme();
 
   const bearerToken = collection.draft?.root ? get(collection, 'draft.root.request.auth.bearer.token', '') : get(collection, 'root.request.auth.bearer.token', '');
+  const bearer = collection.draft?.root ? get(collection, 'draft.root.request.auth.bearer', {}) : get(collection, 'root.request.auth.bearer', {});
+  const prefix = bearer?.prefix ?? 'Bearer';
 
   const handleSave = () => dispatch(saveCollectionSettings(collection.uid));
 
@@ -22,8 +24,19 @@ const BearerAuth = ({ collection }) => {
         mode: 'bearer',
         collectionUid: collection.uid,
         content: {
+          ...bearer,
           token: token
         }
+      })
+    );
+  };
+
+  const handlePrefixChange = (prefix) => {
+    dispatch(
+      updateCollectionAuth({
+        mode: 'bearer',
+        collectionUid: collection.uid,
+        content: { ...bearer, prefix }
       })
     );
   };
@@ -42,6 +55,17 @@ const BearerAuth = ({ collection }) => {
           isCompact
         />
         <SensitiveFieldWarning fieldName="bearer-token" secretName="token" value={bearerToken} collection={collection} onReplaceValue={handleTokenChange} />
+      </div>
+      <label className="block mt-3 mb-1">Prefix</label>
+      <div className="single-line-editor-wrapper flex items-center" data-testid="bearer-prefix">
+        <SingleLineEditor
+          value={prefix}
+          theme={storedTheme}
+          onSave={handleSave}
+          onChange={handlePrefixChange}
+          collection={collection}
+          isCompact
+        />
       </div>
     </StyledWrapper>
   );

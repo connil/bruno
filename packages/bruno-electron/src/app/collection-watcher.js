@@ -13,6 +13,7 @@ const {
   parseEnvironment,
   parseRequest,
   parseRequestViaWorker,
+  CUSTOM_SETTINGS_FILENAME,
   parseCollection,
   parseFolder
 } = require('@usebruno/filestore');
@@ -29,6 +30,8 @@ const { parseLargeRequestWithRedaction } = require('../utils/parse');
 const { transformBrunoConfigAfterRead } = require('../utils/transformBrunoConfig');
 const dotEnvWatcher = require('./dotenv-watcher');
 const { checkpoint } = require('../utils/benchmark');
+const { defaultClassify } = require('../utils/mount');
+const { getCustomSettingsCollectionPath, loadRequestCustomSettingsWithMigration } = require('../utils/request-custom-settings');
 
 const MAX_FILE_SIZE = 2.5 * 1024 * 1024;
 const WSL_POLLING_INTERVAL_MS = 2000;
@@ -278,6 +281,7 @@ const add = async (win, pathname, collectionUid, collectionPath, useWorkerThread
       file.data = collectionRoot;
       // cache the full parse result (collectionRoot + brunoConfig for yml)
       stageToCache(collectionPath, pathname, parsed);
+      file.data = loadRequestCustomSettingsWithMigration(collectionPath, pathname, file.data, format);
 
       hydrateCollectionRootWithUuid(file.data);
       win.webContents.send('main:collection-tree-updated', 'addFile', file);
@@ -318,6 +322,7 @@ const add = async (win, pathname, collectionUid, collectionPath, useWorkerThread
       const content = fs.readFileSync(pathname, 'utf8');
       file.data = await parseFolder(content, { format });
       stageToCache(collectionPath, pathname, file.data);
+      file.data = loadRequestCustomSettingsWithMigration(collectionPath, pathname, file.data, format);
 
       hydrateCollectionRootWithUuid(file.data);
       win.webContents.send('main:collection-tree-updated', 'addFile', file);
@@ -348,6 +353,7 @@ const add = async (win, pathname, collectionUid, collectionPath, useWorkerThread
       try {
         file.data = await parseRequest(content, { format });
         stageToCache(collectionPath, pathname, file.data);
+        file.data = loadRequestCustomSettingsWithMigration(getCustomSettingsCollectionPath(collectionPath, pathname), pathname, file.data, format);
         file.partial = false;
         file.loading = false;
         file.size = sizeInMB(fileStats?.size);
@@ -404,6 +410,7 @@ const add = async (win, pathname, collectionUid, collectionPath, useWorkerThread
           filename: pathname
         });
         stageToCache(collectionPath, pathname, file.data);
+        file.data = loadRequestCustomSettingsWithMigration(getCustomSettingsCollectionPath(collectionPath, pathname), pathname, file.data, format);
         file.partial = false;
         file.loading = false;
         file.data.raw = content;
@@ -524,6 +531,7 @@ const change = async (win, pathname, collectionUid, collectionPath) => {
       file.data = collectionRoot;
       // cache the full parse result (collectionRoot + brunoConfig for yml)
       stageToCache(collectionPath, pathname, parsed);
+      file.data = loadRequestCustomSettingsWithMigration(collectionPath, pathname, file.data, format);
 
       hydrateCollectionRootWithUuid(file.data);
       win.webContents.send('main:collection-tree-updated', 'change', file);
@@ -564,6 +572,7 @@ const change = async (win, pathname, collectionUid, collectionPath) => {
       const content = fs.readFileSync(pathname, 'utf8');
       file.data = await parseFolder(content, { format });
       stageToCache(collectionPath, pathname, file.data);
+      file.data = loadRequestCustomSettingsWithMigration(collectionPath, pathname, file.data, format);
 
       hydrateCollectionRootWithUuid(file.data);
       win.webContents.send('main:collection-tree-updated', 'change', file);
@@ -598,6 +607,7 @@ const change = async (win, pathname, collectionUid, collectionPath) => {
         stageToCache(collectionPath, pathname, file.data);
       }
 
+      file.data = loadRequestCustomSettingsWithMigration(getCustomSettingsCollectionPath(collectionPath, pathname), pathname, file.data, format);
       file.data.raw = content;
       file.size = sizeInMB(fileStats?.size);
       hydrateRequestWithUuid(file.data, pathname);
@@ -838,6 +848,7 @@ class CollectionWatcher {
         const normalizedPath = normalizeAndResolvePath(filepath);
         const relativePath = path.relative(watchPath, normalizedPath);
         const basename = path.basename(filepath);
+        if (relativePath === CUSTOM_SETTINGS_FILENAME) return false;
 
         // Ignore .env files - handled by dotenv-watcher
         if (basename === '.env' || basename.startsWith('.env.')) {
@@ -879,12 +890,30 @@ class CollectionWatcher {
     });
 
     let startedNewWatcher = false;
+    const isCustomSettingsSidecar = (pathname) => path.relative(watchPath, pathname) === CUSTOM_SETTINGS_FILENAME;
+    const refreshRequestCustomSettings = async () => {
+      // Reparse the request, not the hydrated tree: deleting an override must restore the file's defaults.
+      for (const [directory, filenames] of Object.entries(watcher.getWatched())) {
+        for (const filename of filenames) {
+          const pathname = path.join(directory, filename);
+          if (!['request', 'folder', 'collection'].includes(defaultClassify(path.relative(watchPath, pathname))?.type)) continue;
+          if (!fs.existsSync(pathname)) continue;
+          await change(win, pathname, collectionUid, watchPath);
+        }
+      }
+    };
     watcher
       .on('ready', () => onWatcherSetupComplete(win, watchPath, collectionUid, this, workspacePathname))
-      .on('add', (pathname) => add(win, pathname, collectionUid, watchPath, useWorkerThread, this))
+      .on('add', (pathname) => isCustomSettingsSidecar(pathname)
+        ? refreshRequestCustomSettings()
+        : add(win, pathname, collectionUid, watchPath, useWorkerThread, this))
       .on('addDir', (pathname) => addDirectory(win, pathname, collectionUid, watchPath))
-      .on('change', (pathname) => change(win, pathname, collectionUid, watchPath))
-      .on('unlink', (pathname) => unlink(win, pathname, collectionUid, watchPath))
+      .on('change', (pathname) => isCustomSettingsSidecar(pathname)
+        ? refreshRequestCustomSettings()
+        : change(win, pathname, collectionUid, watchPath))
+      .on('unlink', (pathname) => isCustomSettingsSidecar(pathname)
+        ? refreshRequestCustomSettings()
+        : unlink(win, pathname, collectionUid, watchPath))
       .on('unlinkDir', (pathname) => unlinkDir(win, pathname, collectionUid, watchPath))
       .on('error', (error) => {
         // `EMFILE` is an error code thrown when to many files are watched at the same time see: https://github.com/usebruno/bruno/issues/627
@@ -1016,6 +1045,17 @@ class CollectionWatcher {
       if (path.basename(pathname) === 'metadata.json') {
         return;
       }
+      if (path.basename(pathname) === CUSTOM_SETTINGS_FILENAME) {
+        for (const [directory, filenames] of Object.entries(watcher.getWatched())) {
+          for (const filename of filenames) {
+            const requestPath = path.join(directory, filename);
+            if (defaultClassify(filename)?.type === 'request' && fs.existsSync(requestPath)) {
+              await addTempFile(requestPath);
+            }
+          }
+        }
+        return;
+      }
 
       // Get the actual collection path from metadata
       const actualCollectionPath = this.getCollectionPathFromTempDirectory(tempDirectoryPath);
@@ -1059,7 +1099,10 @@ class CollectionWatcher {
 
     watcher
       .on('add', (pathname) => addTempFile(pathname))
-      .on('unlink', (pathname) => unlinkTempFile(pathname))
+      .on('change', (pathname) => addTempFile(pathname))
+      .on('unlink', (pathname) => path.basename(pathname) === CUSTOM_SETTINGS_FILENAME
+        ? addTempFile(pathname)
+        : unlinkTempFile(pathname))
       .on('error', (error) => {
         console.error(`An error occurred in the temp directory watcher for: ${tempDirectoryPath}`, error);
       });

@@ -13,6 +13,16 @@ const makeReq = (overrides = {}) => ({
 });
 
 describe('BrunoRequest - getAuthMode()', () => {
+  it.each(['Token secret', 'Basic secret', 'secret'])('recognizes configured bearer auth with custom Authorization %j', (authorization) => {
+    const req = new BrunoRequest(makeReq({
+      headers: { Authorization: authorization },
+      bearerAuth: true
+    }));
+    expect(req.getAuthMode()).toBe('bearer');
+    req.deleteHeader('Authorization');
+    expect(req.getAuthMode()).toBe('none');
+  });
+
   it('returns apikey for header placement when the api key header is present', () => {
     const req = new BrunoRequest(
       makeReq({

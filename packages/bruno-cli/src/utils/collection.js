@@ -2,7 +2,7 @@ const { get, each, find } = require('lodash');
 const fs = require('fs');
 const path = require('path');
 const { getEffectiveTags, getFolderTags, getOwnTags, normalizeLineEndings } = require('@usebruno/common');
-const { parseRequest, parseCollection, parseFolder } = require('@usebruno/filestore');
+const { parseRequest, parseCollection, parseFolder, loadRequestCustomSettings } = require('@usebruno/filestore');
 const { sortByNameThenSequence } = require('@usebruno/common');
 const constants = require('../constants');
 const chalk = require('chalk');
@@ -22,20 +22,21 @@ const getCollectionConfig = (collectionPath, format) => {
   if (format === 'yml') {
     const content = fs.readFileSync(path.join(collectionPath, 'opencollection.yml'), 'utf8');
     const parsed = parseCollection(content, { format: 'yml' });
-    return { brunoConfig: parsed.brunoConfig, collectionRoot: parsed.collectionRoot || {} };
+    const collectionRoot = loadRequestCustomSettings(collectionPath, path.join(collectionPath, 'opencollection.yml'), parsed.collectionRoot || {});
+    return { brunoConfig: parsed.brunoConfig, collectionRoot };
   }
   const brunoConfig = JSON.parse(fs.readFileSync(path.join(collectionPath, 'bruno.json'), 'utf8'));
   const collectionBruPath = path.join(collectionPath, 'collection.bru');
   const collectionRoot = fs.existsSync(collectionBruPath)
-    ? parseCollection(fs.readFileSync(collectionBruPath, 'utf8'), { format: 'bru' })
+    ? loadRequestCustomSettings(collectionPath, collectionBruPath, parseCollection(fs.readFileSync(collectionBruPath, 'utf8'), { format: 'bru' }))
     : {};
   return { brunoConfig, collectionRoot };
 };
 
-const getFolderRoot = (dir, format) => {
+const getFolderRoot = (dir, format, collectionPath) => {
   const folderPath = path.join(dir, FORMAT_CONFIG[format].folderFile);
   if (!fs.existsSync(folderPath)) return null;
-  return parseFolder(fs.readFileSync(folderPath, 'utf8'), { format });
+  return loadRequestCustomSettings(collectionPath, folderPath, parseFolder(fs.readFileSync(folderPath, 'utf8'), { format }));
 };
 
 const createCollectionJsonFromPathname = (collectionPath) => {
@@ -60,7 +61,7 @@ const createCollectionJsonFromPathname = (collectionPath) => {
       if (stats.isDirectory()) {
         if (filePath === environmentsPath || file === '.git' || file === 'node_modules') continue;
         const folderItem = { name: file, pathname: filePath, type: 'folder', items: traverse(filePath) };
-        const folderRoot = getFolderRoot(filePath, format);
+        const folderRoot = getFolderRoot(filePath, format, collectionPath);
         if (folderRoot) {
           folderItem.root = folderRoot;
           folderItem.seq = folderRoot.meta?.seq;
@@ -68,14 +69,17 @@ const createCollectionJsonFromPathname = (collectionPath) => {
         currentDirItems.push(folderItem);
       } else {
         if (file === collectionFile || file === folderFile || path.extname(filePath) !== ext) continue;
+        let requestItem;
         try {
-          const requestItem = parseRequest(fs.readFileSync(filePath, 'utf8'), { format });
-          currentDirItems.push({ name: file, ...requestItem, pathname: filePath });
+          requestItem = parseRequest(fs.readFileSync(filePath, 'utf8'), { format });
         } catch (err) {
           console.warn(chalk.yellow(`Warning: Skipping invalid file ${filePath}\nError: ${err.message}`));
           global.brunoSkippedFiles = global.brunoSkippedFiles || [];
           global.brunoSkippedFiles.push({ path: filePath, error: err.message });
+          continue;
         }
+        loadRequestCustomSettings(collectionPath, filePath, requestItem);
+        currentDirItems.push({ name: file, ...requestItem, pathname: filePath });
       }
     }
 

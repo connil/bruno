@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { parseRequest, parseFolder, parseEnvironment, type CollectionFormat } from '@usebruno/filestore';
+import { parseRequest, parseFolder, parseEnvironment, loadRequestCustomSettings, type CollectionFormat } from '@usebruno/filestore';
 import { writeCollection, writeCollectionLegacy } from './index';
 
 const FORMATS: CollectionFormat[] = ['bru', 'yml'];
@@ -41,6 +41,29 @@ describe('writeCollection methods', () => {
   describe.each(FORMATS)('%s format', (format) => {
     const write = (collection: any) => writeCollectionLegacy(collection, outputDir, { format });
     const readRequest = (...segments: string[]) => parseRequest(read(...segments), { format });
+
+    it('exports bearer prefixes only to the sidecar at every scope', async () => {
+      const root = { meta: { name: 'Auth' }, request: { auth: { mode: 'bearer', bearer: { token: 'secret', prefix: 'Custom' } } } };
+      await write(collectionWith({
+        root,
+        items: [{
+          type: 'folder', name: 'API', root,
+          items: [httpItem({
+            filename: `request.${format}`,
+            request: { method: 'GET', url: 'https://example.com', auth: root.request.auth }
+          })]
+        }]
+      }));
+      const collectionFile = format === 'bru' ? 'collection.bru' : 'opencollection.yml';
+      for (const filename of [collectionFile, path.join('API', `folder.${format}`), path.join('API', `request.${format}`)]) {
+        expect(read(filename)).not.toContain('prefix:');
+      }
+      expect(JSON.parse(read('.bruno-custom.json')).requests).toEqual({
+        '/': { bearerTokenPrefix: 'Custom' },
+        'API/': { bearerTokenPrefix: 'Custom' },
+        'API/request': { bearerTokenPrefix: 'Custom' }
+      });
+    });
 
     it('writes http and graphql requests', async () => {
       await write(collectionWith({
@@ -85,6 +108,31 @@ describe('writeCollection methods', () => {
       expect(fs.readdirSync(outputDir).filter((file) => file.includes('pet')).sort()).toEqual([`DELETE -pet-{petId}.${format}`, `GET -pet-{petId}.${format}`]);
       expect(readRequest(`GET -pet-{petId}.${format}`)).toHaveProperty('name', '/pet/{petId}');
       expect(readRequest(`DELETE -pet-{petId}.${format}`)).toHaveProperty('request.method', 'DELETE');
+    });
+
+    it('stores imported encoding and path alternatives outside the request file', async () => {
+      await write(collectionWith({
+        items: [httpItem({
+          filename: `request.${format}`,
+          request: {
+            method: 'GET',
+            url: 'https://example.com',
+            params: [
+              { name: 'q', value: 'text', type: 'query', enabled: true, encodeValueAsBase64: true },
+              { name: 'id', value: 'inactive', type: 'path', enabled: false },
+              { name: 'id', value: 'selected', type: 'path', enabled: true }
+            ]
+          }
+        })]
+      }));
+      expect(read(`request.${format}`)).not.toContain('encodeValueAsBase64');
+      const request = readRequest(`request.${format}`);
+      expect(request.request.params.filter((param: { type: string }) => param.type === 'path')).toHaveLength(1);
+      loadRequestCustomSettings(outputDir, path.join(outputDir, `request.${format}`), request);
+      expect(request.request.params[0]).toMatchObject({ name: 'q', encodeValueAsBase64: true });
+      expect(request.request.params.filter((param: { type: string }) => param.type === 'path')).toMatchObject([
+        { value: 'inactive', enabled: false }, { value: 'selected', enabled: true }
+      ]);
     });
 
     it('writes grpc and websocket requests', async () => {

@@ -78,6 +78,7 @@ jest.mock('@usebruno/common', () => {
     refreshExplicitHeaderNames: ogCommon.refreshExplicitHeaderNames,
     utils: {
       encodeUrl: jest.fn((u) => u),
+      encodeUrlWithQueryParamSettings: jest.fn((u) => u),
       buildFormUrlEncodedPayload: jest.fn(),
       extractPromptVariables: mockExtractPromptVariables,
       isFormData: jest.fn(() => false),

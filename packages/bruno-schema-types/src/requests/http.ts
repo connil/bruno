@@ -12,6 +12,9 @@ export type HttpRequestParamType = 'query' | 'path';
 
 export interface HttpRequestParam extends KeyValue {
   type: HttpRequestParamType;
+  encodeName?: boolean;
+  encodeValue?: boolean;
+  encodeValueAsBase64?: boolean;
 }
 
 export type HttpRequestBodyMode

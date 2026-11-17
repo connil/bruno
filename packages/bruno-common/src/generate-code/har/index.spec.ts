@@ -41,6 +41,28 @@ describe('buildHar — basic HAR shape', () => {
   });
 });
 
+describe('buildHar — per-query-parameter base64 encoding', () => {
+  it('uses the Base64-transformed query value in the generated HAR', async () => {
+    const { har } = await buildHar({
+      request: baseRequest({
+        url: 'https://example.com/api?token=hello',
+        params: [{
+          name: 'token',
+          value: 'hello',
+          type: 'query',
+          enabled: true,
+          encodeName: true,
+          encodeValue: true,
+          encodeValueAsBase64: true
+        }]
+      }),
+      shouldInterpolate: false
+    });
+
+    expect(har.queryString).toEqual([{ name: 'token', value: 'aGVsbG8=' }]);
+  });
+});
+
 describe('buildHar — encodeUrl toggle (PR #5507 content-blind contract)', () => {
   it('OFF: rawUrl matches user-typed URL (path-param substitution happens upstream for Generate Code)', async () => {
     const { rawUrl } = await buildHar({
@@ -104,6 +126,19 @@ describe('buildHar — auth → headers translation', () => {
     const auth = har.headers.find((h) => h.name === 'Authorization');
     expect(auth).toBeDefined();
     expect(auth?.value).toBe(`Basic ${Buffer.from('alice:pw').toString('base64')}`);
+  });
+
+  it.each([
+    ['Token', 'Token tk-123'],
+    ['', 'Bearer tk-123'],
+    ['{{scheme}}', 'Custom tk-123']
+  ])('uses bearer prefix %j in generated headers', async (prefix, expected) => {
+    const { har } = await buildHar({
+      request: baseRequest({ auth: { mode: 'bearer', bearer: { token: 'tk-123', prefix } } }),
+      variables: { scheme: 'Custom' },
+      shouldInterpolate: true
+    });
+    expect(har.headers).toContainEqual({ name: 'Authorization', value: expected });
   });
 
   it('bearer auth → Authorization: Bearer <token>', async () => {

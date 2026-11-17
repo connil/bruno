@@ -204,12 +204,13 @@ export const fromOpenCollectionAuth = (auth: Auth | undefined): BrunoAuth => {
     }
 
     case 'bearer': {
-      const bearerAuth = auth as AuthBearer;
+      const bearerAuth: AuthBearer & { prefix?: string } = auth;
       return {
         ...defaultAuth,
         mode: 'bearer',
         bearer: {
-          token: bearerAuth.token || null
+          token: bearerAuth.token || null,
+          ...(typeof bearerAuth.prefix === 'string' ? { prefix: bearerAuth.prefix } : {})
         }
       };
     }

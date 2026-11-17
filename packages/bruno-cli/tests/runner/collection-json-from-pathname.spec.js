@@ -1,11 +1,54 @@
 const path = require('node:path');
 const fs = require('node:fs');
+const os = require('node:os');
 const { describe, it, expect } = require('@jest/globals');
 const constants = require('../../src/constants');
 const { createCollectionJsonFromPathname, getCollectionFormat, FORMAT_CONFIG } = require('../../src/utils/collection');
-const { parseEnvironment } = require('@usebruno/filestore');
+const { parseEnvironment, stringifyRequest, stringifyFolder, stringifyCollection } = require('@usebruno/filestore');
+const { encodeUrlWithQueryParamSettings } = require('@usebruno/common').utils;
+const prepareRequest = require('../../src/runner/prepare-request');
+const interpolateVars = require('../../src/runner/interpolate-vars');
 
 describe('create collection json from pathname', () => {
+  it.each(['bru', 'yml'])('loads bearer prefixes from the sidecar at every scope in a %s collection', async (format) => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'bruno-cli-bearer-'));
+    try {
+      const root = { meta: { name: 'Auth' }, request: { auth: { mode: 'bearer', bearer: { token: 'root-token' } } } };
+      const rootFile = format === 'bru' ? 'collection.bru' : 'opencollection.yml';
+      fs.writeFileSync(path.join(directory, rootFile), stringifyCollection(root, { name: 'Auth' }, { format }));
+      if (format === 'bru') fs.writeFileSync(path.join(directory, 'bruno.json'), JSON.stringify({ version: '1', name: 'Auth' }));
+      fs.mkdirSync(path.join(directory, 'API'));
+      fs.writeFileSync(path.join(directory, 'API', `folder.${format}`), stringifyFolder({
+        ...root, request: { auth: { mode: 'bearer', bearer: { token: 'folder-token' } } }
+      }, { format }));
+      const request = (name, auth) => ({
+        type: 'http-request', name, request: {
+          method: 'GET', url: 'https://example.com', headers: [], params: [], body: { mode: 'none' }, auth
+        }
+      });
+      fs.writeFileSync(path.join(directory, `root-request.${format}`), stringifyRequest(request('root-request', { mode: 'inherit' }), { format }));
+      fs.writeFileSync(path.join(directory, 'API', `inherited.${format}`), stringifyRequest(request('inherited', { mode: 'inherit' }), { format }));
+      fs.writeFileSync(path.join(directory, 'API', `own.${format}`), stringifyRequest(request('own', {
+        mode: 'bearer', bearer: { token: 'request-token' }
+      }), { format }));
+      fs.writeFileSync(path.join(directory, '.bruno-custom.json'), JSON.stringify({
+        version: 1, requests: {
+          '/': { bearerTokenPrefix: 'Collection' },
+          'API/': { bearerTokenPrefix: 'Folder' },
+          'API/own': { bearerTokenPrefix: 'Request' }
+        }
+      }));
+      const collection = createCollectionJsonFromPathname(directory);
+      const folder = collection.items.find((item) => item.type === 'folder');
+      const rootRequest = collection.items.find((item) => item.name === 'root-request');
+      expect((await prepareRequest(rootRequest, collection)).headers.Authorization).toBe('Collection root-token');
+      expect((await prepareRequest(folder.items.find((item) => item.name === 'inherited'), collection)).headers.Authorization).toBe('Folder folder-token');
+      expect((await prepareRequest(folder.items.find((item) => item.name === 'own'), collection)).headers.Authorization).toBe('Request request-token');
+    } finally {
+      fs.rmSync(directory, { recursive: true, force: true, maxRetries: 3, retryDelay: 50 });
+    }
+  });
+
   it('should throw an error when the pathname is not a valid bruno collection root', () => {
     const invalidCollectionPathname = path.join(__dirname, './fixtures/collection-invalid');
     jest.spyOn(console, 'error').mockImplementation(() => { });
@@ -210,6 +253,39 @@ describe('create collection json from pathname', () => {
     expect(getUsersReq).toHaveProperty('request.method', 'GET');
     expect(getUsersReq).toHaveProperty('request.url', 'https://api.example.com/users');
     expect(getUsersReq.pathname).toContain('get-users.yml');
+  });
+
+  it.each(['bru', 'yml'])('loads custom query and path parameter settings for %s requests from the sidecar', async (format) => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'bruno-cli-encoding-'));
+    try {
+      if (format === 'bru') {
+        fs.writeFileSync(path.join(directory, 'bruno.json'), JSON.stringify({ version: '1', name: 'test', type: 'collection' }));
+        fs.writeFileSync(path.join(directory, 'request.bru'), 'meta {\n  name: request\n  type: http\n  seq: 1\n}\nget {\n  url: https://example.com/:id\n  body: none\n}\nparams:query {\n  q: test\n}\nparams:path {\n  id: chosen\n}\n');
+      } else {
+        fs.writeFileSync(path.join(directory, 'opencollection.yml'), 'opencollection: 1.0.0\ninfo:\n  name: test\n');
+        fs.writeFileSync(path.join(directory, 'request.yml'), 'info:\n  name: request\n  type: http\nhttp:\n  method: GET\n  url: https://example.com/:id\n  params:\n    - name: q\n      value: test\n      type: query\n    - name: id\n      value: chosen\n      type: path\n');
+      }
+      fs.writeFileSync(path.join(directory, '.bruno-custom.json'), JSON.stringify({
+        version: 1,
+        requests: { request: {
+          queryParamEncoding: [{ name: 'q', occurrence: 0, encodeValueAsBase64: true }],
+          pathParams: [
+            { name: 'id', value: 'unused', enabled: false },
+            { name: 'id', value: 'previous', enabled: true }
+          ]
+        } }
+      }));
+      const collection = createCollectionJsonFromPathname(directory);
+      expect(collection.items[0].request.params[0]).toMatchObject({ name: 'q', encodeValueAsBase64: true });
+      expect(collection.items[0].request.params.filter((param) => param.type === 'path')).toMatchObject([
+        { value: 'unused', enabled: false }, { value: 'chosen', enabled: true }
+      ]);
+      const prepared = await prepareRequest(collection.items[0], collection);
+      interpolateVars(prepared);
+      expect(encodeUrlWithQueryParamSettings(prepared.url, prepared.queryParams)).toBe('https://example.com/chosen?q=dGVzdA%3D%3D');
+    } finally {
+      fs.rmSync(directory, { recursive: true, force: true, maxRetries: 3, retryDelay: 50 });
+    }
   });
 });
 

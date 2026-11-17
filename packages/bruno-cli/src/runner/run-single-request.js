@@ -23,7 +23,7 @@ const { addDigestInterceptor, addEdgeGridInterceptor, getHttpHttpsAgents, makeAx
 const { getCACertificates, transformProxyConfig, applySentHeadersToRequest, measureResponseTime } = require('@usebruno/requests');
 const { getOAuth2Token, getFormattedOauth2Credentials } = require('../utils/oauth2');
 const tokenStore = require('../store/tokenStore');
-const { encodeUrl, buildFormUrlEncodedPayload, extractPromptVariables, isFormData, getMediaType, extractBoundaryFromContentType, hasExplicitScheme, DEFAULT_MAX_REDIRECTS } = require('@usebruno/common').utils;
+const { encodeUrl, encodeUrlWithQueryParamSettings, buildFormUrlEncodedPayload, extractPromptVariables, isFormData, getMediaType, extractBoundaryFromContentType, hasExplicitScheme, DEFAULT_MAX_REDIRECTS } = require('@usebruno/common').utils;
 
 const onConsoleLog = (type, args) => {
   console[type](...args);
@@ -393,7 +393,14 @@ const runSingleRequest = async function (
       request.url = `http://${request.url}`;
     }
 
-    if (request.settings?.encodeUrl) {
+    const urlWithQueryParamSettings = encodeUrlWithQueryParamSettings(
+      request.url,
+      request.queryParams,
+      request.settings?.encodeUrl
+    );
+    if (urlWithQueryParamSettings !== undefined) {
+      request.url = urlWithQueryParamSettings;
+    } else if (request.settings?.encodeUrl) {
       request.url = encodeUrl(request.url);
     }
 

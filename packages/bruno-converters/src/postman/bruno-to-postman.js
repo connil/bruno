@@ -2,6 +2,7 @@ import map from 'lodash/map';
 import { deleteSecretsInEnvs, deleteUidsInEnvs, deleteUidsInItems, isItemARequest } from '../common';
 import translateBruToPostman from '../utils/bruno-to-postman-translator';
 import { toDisplayString as ensureString } from '@usebruno/common/utils';
+import { buildBearerAuthHeader } from '@usebruno/common';
 
 const isItemAFolder = (item) => item.type === 'folder';
 
@@ -390,6 +391,17 @@ export const brunoToPostman = (collection, { preserveScripts = false } = {}) => 
     switch (itemAuth?.mode) {
       case 'inherit': return undefined;
       case 'bearer':
+        if (itemAuth.bearer?.prefix && itemAuth.bearer.prefix !== 'Bearer') {
+          // Postman's bearer auth always adds "Bearer"; an API key preserves custom schemes.
+          return {
+            type: 'apikey',
+            apikey: [
+              { key: 'key', value: 'Authorization', type: 'string' },
+              { key: 'value', value: buildBearerAuthHeader(itemAuth.bearer), type: 'string' },
+              { key: 'in', value: 'header', type: 'string' }
+            ]
+          };
+        }
         return {
           type: 'bearer',
           bearer: [

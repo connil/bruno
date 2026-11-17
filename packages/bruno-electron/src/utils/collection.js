@@ -726,7 +726,7 @@ const transformRequestToSaveToFilesystem = (item) => {
   // Only process params for non-gRPC requests
   if (_item.type !== 'grpc-request') {
     each(_item.request.params, (param) => {
-      itemToSave.request.params.push({
+      const paramToSave = {
         uid: param.uid,
         name: param.name,
         value: param.value,
@@ -734,7 +734,13 @@ const transformRequestToSaveToFilesystem = (item) => {
         annotations: param.annotations,
         type: param.type,
         enabled: param.enabled
+      };
+      ['encodeName', 'encodeValue', 'encodeValueAsBase64'].forEach((key) => {
+        if (typeof param[key] === 'boolean') {
+          paramToSave[key] = param[key];
+        }
       });
+      itemToSave.request.params.push(paramToSave);
     });
   }
 

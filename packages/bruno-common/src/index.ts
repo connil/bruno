@@ -28,6 +28,7 @@ export type {
   NamedEnvironment
 } from './api-docs';
 export { HTTP_SCRIPT_KEYS, GRPC_SCRIPT_KEYS, SCRIPT_TYPES } from './scripts';
+export { buildBearerAuthHeader } from './auth';
 
 export { buildHar } from './generate-code/har';
 export type {

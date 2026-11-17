@@ -1,6 +1,7 @@
 import { describe, expect, it } from '@jest/globals';
 import {
   encodeUrl,
+  encodeUrlWithQueryParamSettings,
   parseQueryParams,
   buildQueryString,
   hasExplicitScheme,
@@ -15,6 +16,42 @@ describe('encodeUrl', () => {
     it('should return the original URL when query string is empty', () => {
       const url = 'https://example.com/path?';
       expect(encodeUrl(url)).toBe(url);
+    });
+
+    describe('encodeUrlWithQueryParamSettings', () => {
+      it('encodes each query parameter independently and base64-encodes values before URL encoding', () => {
+        const url = 'https://example.com/api';
+        const params = [
+          { type: 'query', name: 'user id', value: 'José Doe', encodeName: true, encodeValue: true },
+          { type: 'query', name: 'raw', value: 'value%20x', encodeName: false, encodeValue: false },
+          { type: 'query', name: 'token', value: 'hello', encodeName: false, encodeValue: true, encodeValueAsBase64: true }
+        ];
+
+        expect(encodeUrlWithQueryParamSettings(url, params, false)).toBe(
+          'https://example.com/api?user%20id=Jos%C3%A9%20Doe&raw=value%20x&token=aGVsbG8%3D'
+        );
+      });
+
+      it('uses the request setting to encode the URL path without changing parameter encoding', () => {
+        const url = 'https://example.com/a b?search=hello world';
+        const params = [
+          { type: 'query', name: 'search', value: 'hello world', encodeName: false, encodeValue: false }
+        ];
+
+        expect(encodeUrlWithQueryParamSettings(url, params, true)).toBe('https://example.com/a%20b?search=hello world');
+        expect(encodeUrlWithQueryParamSettings(url, params, false)).toBe('https://example.com/a b?search=hello world');
+      });
+
+      it('does not alter requests without query parameters', () => {
+        expect(encodeUrlWithQueryParamSettings('https://example.com/?a=b', [{ type: 'path', name: 'id' }])).toBeUndefined();
+      });
+
+      it('treats a hash in the URL query as parameter data', () => {
+        expect(encodeUrlWithQueryParamSettings(
+          'https://example.com/?token=hello#world',
+          [{ type: 'query', name: 'token', value: 'hello#world' }]
+        )).toBe('https://example.com/?token=hello%23world');
+      });
     });
 
     it('should preserve URLs without query parameters', () => {

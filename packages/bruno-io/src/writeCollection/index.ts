@@ -7,6 +7,7 @@ import {
   stringifyFolder,
   stringifyCollection,
   stringifyEnvironment,
+  saveRequestCustomSettings,
   DEFAULT_COLLECTION_FORMAT,
   type CollectionFormat
 } from '@usebruno/filestore';
@@ -49,7 +50,7 @@ const normalizeRequestItem = (item: BrunoItem): BrunoItem => {
   } as BrunoItem;
 };
 
-const writeItems = (items: BrunoItem[], dirPath: string, format: CollectionFormat): void => {
+const writeItems = (items: BrunoItem[], dirPath: string, format: CollectionFormat, collectionPath: string): void => {
   for (const item of items) {
     if (item.type === 'folder') {
       const folderPath = path.join(dirPath, sanitizeName(item.filename || item.name));
@@ -59,13 +60,18 @@ const writeItems = (items: BrunoItem[], dirPath: string, format: CollectionForma
         const folderRoot = typeof item.seq === 'number'
           ? { ...item.root, meta: { ...item.root.meta, seq: item.seq } }
           : item.root;
-        fs.writeFileSync(path.join(folderPath, `folder.${format}`), stringifyFolder(folderRoot, { format }));
+        const folderFilePath = path.join(folderPath, `folder.${format}`);
+        fs.writeFileSync(folderFilePath, stringifyFolder(folderRoot, { format }));
+        saveRequestCustomSettings(collectionPath, folderFilePath, folderRoot, format);
       }
 
-      writeItems(item.items || [], folderPath, format);
+      writeItems(item.items || [], folderPath, format, collectionPath);
     } else if (SUPPORTED_WRITE_ITEM_TYPES.includes(item.type)) {
       const filename = sanitizeName(getFilenameWithFormat(item, format));
-      fs.writeFileSync(path.join(dirPath, filename), stringifyRequest(normalizeRequestItem(item), { format }));
+      const requestPath = path.join(dirPath, filename);
+      const normalized = normalizeRequestItem(item);
+      fs.writeFileSync(requestPath, stringifyRequest(normalized, { format }));
+      saveRequestCustomSettings(collectionPath, requestPath, normalized, format);
     } else {
       throw new Error(`Unsupported item type: ${item.type}`);
     }
@@ -104,6 +110,7 @@ const writeCollectionInFormat = async (
     path.join(outputDir, collectionFile),
     stringifyCollection((collection.root || {}) as BrunoCollection, brunoConfig, { format })
   );
+  saveRequestCustomSettings(outputDir, path.join(outputDir, collectionFile), collection.root || {}, format);
 
   const environments = collection.environments || [];
   if (environments.length) {
@@ -114,7 +121,7 @@ const writeCollectionInFormat = async (
     }
   }
 
-  writeItems(collection.items || [], outputDir, format);
+  writeItems(collection.items || [], outputDir, format, outputDir);
 
   return outputDir;
 };

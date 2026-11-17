@@ -62,6 +62,13 @@ describe('prepare-grpc-request: prepareGrpcRequest', () => {
     mockRuntimeVariables = {};
   });
 
+  it.each([['Token', 'Token secret'], ['', 'Bearer secret']])('uses bearer prefix %j for gRPC authorization metadata', async (prefix, expected) => {
+    setAuthHeaders.mockImplementation(jest.requireActual('../../src/ipc/network/prepare-request').setAuthHeaders);
+    mockItem.request.auth = { mode: 'bearer', bearer: { token: 'secret', prefix } };
+    const result = await prepareGrpcRequest(mockItem, mockCollection, mockEnvironment, mockRuntimeVariables);
+    expect(result.headers.Authorization).toBe(expected);
+  });
+
   describe('Header processing', () => {
     it('should keep regular headers as strings', async () => {
       mockItem.request.headers = [

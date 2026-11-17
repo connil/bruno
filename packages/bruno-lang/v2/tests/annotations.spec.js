@@ -957,16 +957,17 @@ headers {
     expect(output).toEqual(input);
   });
 
-  it('parseAndSerialise - json sourced roundtrip check - params:path with duplicate names and disabled entries', () => {
+  it('reads legacy path alternatives but writes only the selected value', () => {
     const input = {
       params: [
         { name: 'userId', value: '123', enabled: false, type: 'path' },
         { name: 'userId', value: '456', enabled: true, type: 'path' }
       ]
     };
+    expect(parser('params:path {\n  ~userId: 123\n  userId: 456\n}\n')).toEqual(input);
     const bru = jsonToBru(input);
-    expect(bru).toContain('~userId: 123');
-    expect(parser(bru)).toEqual(input);
+    expect(bru).not.toContain('~userId');
+    expect(parser(bru)).toEqual({ params: [input.params[1]] });
   });
 
   it('parseAndSerialise - bru sourced roundtrip check - metadata', () => {

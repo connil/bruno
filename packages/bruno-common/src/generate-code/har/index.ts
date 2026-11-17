@@ -29,8 +29,9 @@
 
 import { cloneDeep, find, get } from 'lodash';
 import interpolate, { interpolateObject } from '../../interpolate';
-import { DEFAULT_SCHEME, encodeUrl, getExplicitScheme, hasExplicitScheme, parseQueryParams, patternHasher } from '../../utils';
+import { DEFAULT_SCHEME, encodeBase64, encodeUrl, getExplicitScheme, hasExplicitScheme, parseQueryParams, patternHasher } from '../../utils';
 import { signEdgeGridRequest } from './edgegrid';
+import { buildBearerAuthHeader } from '../../auth';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -41,6 +42,9 @@ export type BrunoKV = {
   value: string;
   type?: string;
   enabled?: boolean;
+  encodeName?: boolean;
+  encodeValue?: boolean;
+  encodeValueAsBase64?: boolean;
 };
 
 export type BrunoBody = {
@@ -376,7 +380,7 @@ const authToHeaders = async (
     }
 
     case 'bearer':
-      return [{ name: 'Authorization', value: `Bearer ${get(auth, 'bearer.token', '')}`, enabled: true }];
+      return [{ name: 'Authorization', value: buildBearerAuthHeader(auth.bearer), enabled: true }];
 
     case 'apikey': {
       const placement = get(auth, 'apikey.placement', 'header') as string;
@@ -502,7 +506,10 @@ const buildQueryString = (
   // callers that bypass the params syncer.
   let params: { name: string; value: string }[];
   if (enabledParams.length > 0) {
-    params = enabledParams.map((p) => ({ name: p.name, value: p.value }));
+    params = enabledParams.map((p) => ({
+      name: p.name,
+      value: p.encodeValueAsBase64 ? encodeBase64(String(p.value ?? '')) : p.value
+    }));
   } else if (urlForFallback) {
     // `#` is data (Option C — see encodeUrl), so the query slice extends to
     // end-of-string and parseQueryParams is told NOT to split on `#`.

@@ -22,7 +22,8 @@ const externalDeps = [
   'ajv',
   // Node built-ins
   'worker_threads',
-  'path'
+  'path',
+  'fs'
 ];
 
 const commonPlugins = [

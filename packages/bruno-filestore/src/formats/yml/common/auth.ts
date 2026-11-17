@@ -274,12 +274,15 @@ export const toBrunoAuth = (auth: Auth | null | undefined): BrunoAuth | null => 
       };
       break;
 
-    case 'bearer':
+    case 'bearer': {
+      const bearerAuth: AuthBearer & { prefix?: string } = auth;
       brunoAuth.mode = 'bearer';
       brunoAuth.bearer = {
-        token: auth.token || ''
+        token: auth.token || '',
+        ...(isString(bearerAuth.prefix) ? { prefix: bearerAuth.prefix } : {})
       };
       break;
+    }
 
     case 'digest':
       brunoAuth.mode = 'digest';

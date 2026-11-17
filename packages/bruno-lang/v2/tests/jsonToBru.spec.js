@@ -1,6 +1,61 @@
 const stringify = require('../src/jsonToBru');
+const parse = require('../src/bruToJson');
 
 describe('jsonToBru stringify', () => {
+  it('does not write query parameter encoding options into requests', () => {
+    const input = {
+      meta: { name: 'encoding-options', type: 'http', seq: 1 },
+      http: { method: 'get', url: 'https://example.com?search=value', body: 'none' },
+      params: [
+        {
+          name: 'search',
+          value: 'value',
+          enabled: true,
+          type: 'query',
+          encodeName: false,
+          encodeValue: false,
+          encodeValueAsBase64: true
+        }
+      ]
+    };
+
+    const bru = stringify(input);
+    const output = parse(bru);
+
+    expect(bru).not.toMatch(/@encode(Name|Value|ValueAsBase64)\(/);
+    expect(output.params[0]).toMatchObject({ name: 'search', value: 'value' });
+    expect(output.params[0]).not.toHaveProperty('encodeName');
+  });
+
+  it('omits default encoding options and still reads explicitly stored defaults', () => {
+    const input = {
+      meta: { name: 'encoding', type: 'http', seq: 1 },
+      http: { method: 'get', url: 'https://example.com?search=value', body: 'none' },
+      params: [{
+        name: 'search',
+        value: 'value',
+        enabled: true,
+        type: 'query',
+        encodeName: true,
+        encodeValue: true,
+        encodeValueAsBase64: false
+      }]
+    };
+    const bru = stringify(input);
+    expect(bru).not.toMatch(/@encode(Name|Value|ValueAsBase64)\(/);
+    const params = parse(bru).params[0];
+    expect(params.encodeName ?? true).toBe(true);
+    expect(params.encodeValue ?? true).toBe(true);
+    expect(params.encodeValueAsBase64 ?? false).toBe(false);
+
+    const legacy = bru.replace('  search: value', '  @encodeName(\'true\')\n  @encodeValue(\'true\')\n  @encodeValueAsBase64(\'false\')\n  search: value');
+    expect(parse(legacy).params[0]).toMatchObject({
+      encodeName: true,
+      encodeValue: true,
+      encodeValueAsBase64: false
+    });
+  });
+
   describe('body:ws', () => {
     it('stringifies a valid bruno request | smoke', () => {
       const input = {

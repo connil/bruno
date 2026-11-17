@@ -2,6 +2,26 @@ import { describe, it, expect } from '@jest/globals';
 import insomniaToBruno from '../../src/insomnia/insomnia-to-bruno';
 
 describe('insomnia-collection', () => {
+  it.each(['Token', ''])('imports bearer prefix %j', (prefix) => {
+    const collection = insomniaToBruno({
+      _type: 'export',
+      __export_format: 4,
+      resources: [
+        { _id: 'wrk_auth', _type: 'workspace', name: 'Auth' },
+        {
+          _id: 'req_auth',
+          _type: 'request',
+          parentId: 'wrk_auth',
+          name: 'Request',
+          method: 'GET',
+          url: 'https://example.com',
+          authentication: { type: 'bearer', token: 'secret', prefix }
+        }
+      ]
+    });
+    expect(collection.items[0].request.auth.bearer).toEqual({ token: 'secret', prefix });
+  });
+
   it('should correctly import a valid Insomnia collection file', async () => {
     const brunoCollection = insomniaToBruno(insomniaCollection);
 

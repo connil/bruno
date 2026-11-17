@@ -209,7 +209,10 @@ export const transformCollectionToSaveToExportAsFile = (collection, options = {}
         description: param.description,
         annotations: param.annotations,
         type: param.type,
-        enabled: param.enabled
+        enabled: param.enabled,
+        encodeName: param.encodeName,
+        encodeValue: param.encodeValue,
+        encodeValueAsBase64: param.encodeValueAsBase64
       };
     });
   };
@@ -385,7 +388,8 @@ export const transformCollectionToSaveToExportAsFile = (collection, options = {}
             break;
           case 'bearer':
             di.request.auth.bearer = {
-              token: get(si.request, 'auth.bearer.token', '')
+              token: get(si.request, 'auth.bearer.token', ''),
+              ...(typeof si.request.auth.bearer?.prefix === 'string' ? { prefix: si.request.auth.bearer.prefix } : {})
             };
             break;
           case 'digest':
@@ -794,7 +798,10 @@ export const transformRequestToSaveToFilesystem = (item) => {
         description: param.description,
         annotations: param.annotations,
         type: param.type,
-        enabled: param.enabled
+        enabled: param.enabled,
+        encodeName: param.encodeName,
+        encodeValue: param.encodeValue,
+        encodeValueAsBase64: param.encodeValueAsBase64
       });
     });
   }

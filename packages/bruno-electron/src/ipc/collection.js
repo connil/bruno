@@ -18,6 +18,12 @@ const {
   stringifyFolder,
   stringifyEnvironment,
   parseEnvironment,
+  loadRequestCustomSettings,
+  saveRequestCustomSettings,
+  copyRequestCustomSettings,
+  deleteRequestCustomSettings,
+  CUSTOM_SETTINGS_FILENAME,
+  LEGACY_CUSTOM_SETTINGS_FILENAME,
   DEFAULT_COLLECTION_FORMAT
 } = require('@usebruno/filestore');
 const { utils } = require('@usebruno/common');
@@ -30,12 +36,17 @@ const { getWsClient } = require('../ipc/network/ws-event-handlers');
 const { hasSubDirectories } = require('../utils/filesystem');
 const { readCollectionForApiSpec } = require('../utils/collection-reader');
 const { exportCollectionYaml } = require('./collection-export');
+const {
+  getCustomSettingsCollectionPath,
+  loadRequestCustomSettingsWithMigration,
+  writeRequestWithCustomSettings,
+  createRequestWithCustomSettings
+} = require('../utils/request-custom-settings');
 const { transformProxyConfig } = require('@usebruno/requests');
 
 const {
   DEFAULT_GITIGNORE,
   writeFile,
-  writeFileUnique,
   mkdirUnique,
   getUniqueRenamePath,
   getUniqueTargetPath,
@@ -175,6 +186,10 @@ const validatePathIsInsideCollection = (filePath) => {
   if (!collectionPath) {
     throw new Error(`Path: ${filePath} should be inside a collection`);
   }
+};
+
+const findCustomSettingsCollectionPath = (pathname) => {
+  return getCustomSettingsCollectionPath(findCollectionPathByItemPath(pathname), pathname);
 };
 
 const resolveEnvironmentFilePath = (collectionPathname, environmentName, format) => {
@@ -323,6 +338,11 @@ const registerRendererEventHandlers = (mainWindow, watcher) => {
         fs.mkdirSync(path.dirname(newFilePath), { recursive: true });
         // copy each files
         fs.copyFileSync(sourceFilePath, newFilePath);
+      }
+      const customSidecar = path.join(previousPath, CUSTOM_SETTINGS_FILENAME);
+      const encodingSidecar = fs.existsSync(customSidecar) ? customSidecar : path.join(previousPath, LEGACY_CUSTOM_SETTINGS_FILENAME);
+      if (fs.existsSync(encodingSidecar)) {
+        fs.copyFileSync(encodingSidecar, path.join(dirPath, CUSTOM_SETTINGS_FILENAME));
       }
 
       const { size, filesCount } = await getCollectionStats(dirPath);
@@ -512,7 +532,7 @@ const registerRendererEventHandlers = (mainWindow, watcher) => {
       }
 
       const content = await stringifyFolder(folderRoot, { format });
-      await writeFile(folderFilePath, content);
+      await writeRequestWithCustomSettings(collectionPathname, folderFilePath, folderRoot, format, content);
     } catch (error) {
       return Promise.reject(error);
     }
@@ -529,8 +549,11 @@ const registerRendererEventHandlers = (mainWindow, watcher) => {
 
       const filePath = path.join(collectionPathname, filename);
       const existing = fs.existsSync(filePath) ? fs.readFileSync(filePath, 'utf8') : null;
-      if (content === existing) return; // skip write if content unchanged
-      await writeFile(filePath, content);
+      if (content === existing) {
+        saveRequestCustomSettings(collectionPathname, filePath, collectionRoot, format);
+        return;
+      }
+      await writeRequestWithCustomSettings(collectionPathname, filePath, collectionRoot, format, content);
     } catch (error) {
       console.error('Error in save-collection-root:', error);
       return Promise.reject(error);
@@ -556,10 +579,12 @@ const registerRendererEventHandlers = (mainWindow, watcher) => {
       const content = await stringifyRequestViaWorker(request, { format });
       // Resolve filename collisions silently and atomically (race-safe).
       // Returns the path actually created so the renderer can target the right tab.
-      const { pathname: createdPathname, filename } = await writeFileUnique(
+      const { pathname: createdPathname, filename } = await createRequestWithCustomSettings(
+        collectionPath,
         path.dirname(pathname),
         baseFilename,
         format,
+        request,
         content
       );
       return { pathname: createdPathname, filename };
@@ -581,7 +606,7 @@ const registerRendererEventHandlers = (mainWindow, watcher) => {
       syncExampleUidsCache(pathname, request.examples);
 
       const content = await stringifyRequestViaWorker(request, { format });
-      await writeFile(pathname, content);
+      await writeRequestWithCustomSettings(findCustomSettingsCollectionPath(pathname), pathname, request, format, content);
     } catch (error) {
       return Promise.reject(error);
     }
@@ -616,11 +641,17 @@ const registerRendererEventHandlers = (mainWindow, watcher) => {
       const needsConversion = actualSourceFormat !== targetFormat;
 
       let finalContent;
+      let itemToSave = request;
       if (needsConversion) {
         const { parseRequest, stringifyRequest } = require('@usebruno/filestore');
         const sourceContent = await fs.promises.readFile(sourcePathname, 'utf8');
-        const parsedRequest = parseRequest(sourceContent, { format: actualSourceFormat });
+        const parsedRequest = loadRequestCustomSettings(
+          findCustomSettingsCollectionPath(sourcePathname),
+          sourcePathname,
+          parseRequest(sourceContent, { format: actualSourceFormat })
+        );
         const mergedRequest = { ...parsedRequest, ...request };
+        itemToSave = mergedRequest;
         syncExampleUidsCache(sourcePathname, mergedRequest.examples);
         finalContent = stringifyRequest(mergedRequest, { format: targetFormat });
       } else {
@@ -629,7 +660,7 @@ const registerRendererEventHandlers = (mainWindow, watcher) => {
       }
 
       // Resolve collisions silently with a numeric suffix instead of erroring.
-      const { pathname: targetPathname } = await writeFileUnique(targetDirname, filenameWithoutExt, targetFormat, finalContent);
+      const { pathname: targetPathname } = await createRequestWithCustomSettings(collectionPath, targetDirname, filenameWithoutExt, targetFormat, itemToSave, finalContent);
       return { newPathname: targetPathname };
     } catch (error) {
       return Promise.reject(error);
@@ -650,7 +681,7 @@ const registerRendererEventHandlers = (mainWindow, watcher) => {
         validatePathIsInsideCollection(pathname);
 
         const content = await stringifyRequestViaWorker(request, { format: r.format });
-        await writeFile(pathname, content);
+        await writeRequestWithCustomSettings(findCustomSettingsCollectionPath(pathname), pathname, request, r.format, content);
       }
     } catch (error) {
       return Promise.reject(error);
@@ -1134,10 +1165,10 @@ const registerRendererEventHandlers = (mainWindow, watcher) => {
       }
 
       const data = fs.readFileSync(itemPath, 'utf8');
-      const jsonData = parseRequest(data, { format });
+      const jsonData = loadRequestCustomSettings(collectionPathname, itemPath, parseRequest(data, { format }));
       jsonData.name = newName;
       const content = stringifyRequest(jsonData, { format });
-      await writeFile(itemPath, content);
+      await writeRequestWithCustomSettings(collectionPathname, itemPath, jsonData, format, content);
     } catch (error) {
       return Promise.reject(error);
     }
@@ -1193,6 +1224,7 @@ const registerRendererEventHandlers = (mainWindow, watcher) => {
         // duplicate folder in the sidebar. This is especially relevant for
         // case-only renames on case-insensitive filesystems.
         moveRequestUid(oldPath, newPath);
+        copyRequestCustomSettings(collectionPathname, oldPath, collectionPathname, newPath);
 
         /**
          * If it is windows OS
@@ -1212,6 +1244,7 @@ const registerRendererEventHandlers = (mainWindow, watcher) => {
           await fs.renameSync(oldPath, newPath);
         }
 
+        deleteRequestCustomSettings(collectionPathname, oldPath);
         return newPath;
       }
 
@@ -1221,13 +1254,16 @@ const registerRendererEventHandlers = (mainWindow, watcher) => {
 
       // update name in file and save new copy, then delete old copy
       const data = await fs.promises.readFile(oldPath, 'utf8'); // Use async read
-      const jsonData = parseRequest(data, { format });
+      const jsonData = loadRequestCustomSettings(collectionPathname, oldPath, parseRequest(data, { format }));
       jsonData.name = newName;
       moveRequestUid(oldPath, newPath);
 
       const content = stringifyRequest(jsonData, { format });
+      copyRequestCustomSettings(collectionPathname, oldPath, collectionPathname, newPath);
+      saveRequestCustomSettings(collectionPathname, newPath, jsonData, format);
       await fs.promises.unlink(oldPath);
       await writeFile(newPath, content);
+      deleteRequestCustomSettings(collectionPathname, oldPath);
 
       return newPath;
     } catch (error) {
@@ -1286,7 +1322,8 @@ const registerRendererEventHandlers = (mainWindow, watcher) => {
           deleteRequestUid(requestFile);
         }
 
-        fs.rmSync(pathname, { recursive: true, force: true });
+        fs.rmSync(pathname, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
+        deleteRequestCustomSettings(collectionPathname, pathname);
       } else if (['http-request', 'graphql-request', 'grpc-request', 'ws-request'].includes(type)) {
         if (!fs.existsSync(pathname)) {
           return Promise.reject(new Error('The file does not exist'));
@@ -1295,6 +1332,7 @@ const registerRendererEventHandlers = (mainWindow, watcher) => {
         deleteRequestUid(pathname);
 
         fs.unlinkSync(pathname);
+        deleteRequestCustomSettings(collectionPathname, pathname);
       } else if (type === 'app') {
         // Standalone app items are single files with no per-line uid mapping.
         if (!fs.existsSync(pathname)) {
@@ -1341,6 +1379,7 @@ const registerRendererEventHandlers = (mainWindow, watcher) => {
         // Delete the file and its UID mapping
         deleteRequestUid(filePath);
         fs.unlinkSync(filePath);
+        deleteRequestCustomSettings(normalizedTempDir, filePath);
         results.deleted.push(filePath);
       } catch (error) {
         results.errors.push({ path: filePath, error: error.message });
@@ -1449,6 +1488,7 @@ const registerRendererEventHandlers = (mainWindow, watcher) => {
               const sanitizedFilename = claimUniqueFilename(sanitizeName(getFilenameWithFormat(item, format)), requestFilenames);
               const content = await stringifyRequestViaWorker(item, { format });
               const filePath = path.join(currentPath, sanitizedFilename);
+              saveRequestCustomSettings(collectionPath, filePath, item, format);
               safeWriteFileSync(filePath, content);
             }
             if (item.type === 'folder') {
@@ -1460,6 +1500,7 @@ const registerRendererEventHandlers = (mainWindow, watcher) => {
                 const folderFilePath = path.join(folderPath, `folder.${format}`);
                 item.root.meta.seq = item.seq;
                 const folderContent = await stringifyFolder(item.root, { format });
+                saveRequestCustomSettings(collectionPath, folderFilePath, item.root, format);
                 safeWriteFileSync(folderFilePath, folderContent);
               }
 
@@ -1523,6 +1564,7 @@ const registerRendererEventHandlers = (mainWindow, watcher) => {
         if (format === 'yml') {
           brunoConfig.opencollection = '1.0.0';
           const collectionContent = await stringifyCollection(coll.root, brunoConfig, { format });
+          saveRequestCustomSettings(collectionPath, path.join(collectionPath, 'opencollection.yml'), coll.root || {}, format);
           await writeFile(path.join(collectionPath, 'opencollection.yml'), collectionContent);
         } else if (format === 'bru') {
           const bruJsonConfig = { ...brunoConfig, version: '1' };
@@ -1533,6 +1575,7 @@ const registerRendererEventHandlers = (mainWindow, watcher) => {
           await writeFile(path.join(collectionPath, 'bruno.json'), stringifiedBrunoConfig);
 
           const collectionContent = await stringifyCollection(coll.root, brunoConfig, { format });
+          saveRequestCustomSettings(collectionPath, path.join(collectionPath, 'collection.bru'), coll.root || {}, format);
           await writeFile(path.join(collectionPath, 'collection.bru'), collectionContent);
         } else {
           throw new Error(`Invalid format: ${format}`);
@@ -1624,6 +1667,7 @@ const registerRendererEventHandlers = (mainWindow, watcher) => {
             const filePath = path.join(currentPath, newFilename);
 
             validatePathIsInsideCollection(filePath);
+            saveRequestCustomSettings(collectionPathname, filePath, item, format);
             safeWriteFileSync(filePath, content);
           }
           if (item.type === 'folder') {
@@ -1643,6 +1687,7 @@ const registerRendererEventHandlers = (mainWindow, watcher) => {
               folderContent.name = item.name;
               if (folderContent) {
                 const folderFilePath = path.join(folderPath, `folder.${format}`);
+                saveRequestCustomSettings(collectionPathname, folderFilePath, item.root, format);
                 safeWriteFileSync(folderFilePath, folderContent);
               }
             }
@@ -1663,6 +1708,7 @@ const registerRendererEventHandlers = (mainWindow, watcher) => {
         const folderContent = await stringifyFolder(itemFolder.root, { format });
         if (folderContent) {
           const folderFilePath = path.join(resolvedPath, `folder.${format}`);
+          saveRequestCustomSettings(collectionPathname, folderFilePath, itemFolder.root, format);
           safeWriteFileSync(folderFilePath, folderContent);
         }
       }
@@ -1714,7 +1760,7 @@ const registerRendererEventHandlers = (mainWindow, watcher) => {
           if (fs.existsSync(item.pathname)) {
             const itemToSave = transformRequestToSaveToFilesystem(item);
             const content = await stringifyRequestViaWorker(itemToSave, { format });
-            await writeFile(item.pathname, content);
+            await writeRequestWithCustomSettings(findCustomSettingsCollectionPath(item.pathname), item.pathname, itemToSave, format, content);
           }
         } else if (item?.type === 'app') {
           if (fs.existsSync(item.pathname)) {
@@ -1745,9 +1791,13 @@ const registerRendererEventHandlers = (mainWindow, watcher) => {
       const newItemPath = path.join(destinationPath, path.basename(itemPath));
 
       moveRequestUid(itemPath, newItemPath);
+      const sourceCollectionPath = findCollectionPathByItemPath(itemPath);
+      const targetCollectionPath = findCollectionPathByItemPath(newItemPath);
+      copyRequestCustomSettings(sourceCollectionPath, itemPath, targetCollectionPath, newItemPath);
 
       fs.unlinkSync(itemPath);
       safeWriteFileSync(newItemPath, itemContent);
+      deleteRequestCustomSettings(sourceCollectionPath, itemPath);
     } catch (error) {
       return Promise.reject(error);
     }
@@ -1784,8 +1834,13 @@ const registerRendererEventHandlers = (mainWindow, watcher) => {
         });
 
         try {
+          const sourceCollectionPath = findCollectionPathByItemPath(sourcePathname);
+          const targetCollectionPath = findCollectionPathByItemPath(targetPathname);
+          // Populate target settings before its add events; keep source settings until the move succeeds.
+          copyRequestCustomSettings(sourceCollectionPath, sourcePathname, targetCollectionPath, targetPathname);
           await copyPathTo(sourcePathname, targetPathname);
           await removePath(sourcePathname);
+          deleteRequestCustomSettings(sourceCollectionPath, sourcePathname);
         } catch (error) {
           pathnamesAfter?.forEach((_, index) => {
             moveRequestUid(pathnamesAfter[index], pathnamesBefore[index]);
@@ -1819,7 +1874,9 @@ const registerRendererEventHandlers = (mainWindow, watcher) => {
         const targetExt = targetFormat === 'yml' ? 'yml' : 'bru';
 
         const sourceContent = await fs.promises.readFile(sourcePathname, 'utf8');
-        const parsedRequest = parseRequest(sourceContent, { format: sourceFormat });
+        const sourceCollectionPath = findCollectionPathByItemPath(sourcePathname);
+        const targetCollectionPath = findCollectionPathByItemPath(targetDirname);
+        const parsedRequest = loadRequestCustomSettings(sourceCollectionPath, sourcePathname, parseRequest(sourceContent, { format: sourceFormat }));
         const finalContent = stringifyRequest(parsedRequest, { format: targetFormat });
 
         // Resolve collisions silently with a numeric suffix instead of erroring.
@@ -1829,8 +1886,10 @@ const registerRendererEventHandlers = (mainWindow, watcher) => {
         moveRequestUid(sourcePathname, targetPathname);
 
         try {
+          saveRequestCustomSettings(targetCollectionPath, targetPathname, parsedRequest, targetFormat);
           await fs.promises.writeFile(targetPathname, finalContent, { flag: 'wx' });
           await removePath(sourcePathname);
+          deleteRequestCustomSettings(sourceCollectionPath, sourcePathname);
         } catch (error) {
           moveRequestUid(targetPathname, sourcePathname);
           throw error;
@@ -1866,7 +1925,11 @@ const registerRendererEventHandlers = (mainWindow, watcher) => {
         moveRequestUid(requestFile, newRequestFilePath);
       }
 
+      const sourceCollectionPath = findCollectionPathByItemPath(folderPath);
+      const targetCollectionPath = findCollectionPathByItemPath(newFolderPath);
+      copyRequestCustomSettings(sourceCollectionPath, folderPath, targetCollectionPath, newFolderPath);
       fs.renameSync(folderPath, newFolderPath);
+      deleteRequestCustomSettings(sourceCollectionPath, folderPath);
     } catch (error) {
       return Promise.reject(error);
     }
@@ -1889,11 +1952,11 @@ const registerRendererEventHandlers = (mainWindow, watcher) => {
         const ocYmlPath = path.join(collectionPath, 'opencollection.yml');
         if (fs.existsSync(ocYmlPath)) {
           const existing = fs.readFileSync(ocYmlPath, 'utf8');
-          rootToWrite = parseCollection(existing, { format }).collectionRoot;
+          rootToWrite = loadRequestCustomSettingsWithMigration(collectionPath, ocYmlPath, parseCollection(existing, { format }).collectionRoot, format);
         }
       }
       const content = await stringifyCollection(rootToWrite, transformedBrunoConfig, { format });
-      await writeFile(path.join(collectionPath, 'opencollection.yml'), content);
+      await writeRequestWithCustomSettings(collectionPath, path.join(collectionPath, 'opencollection.yml'), rootToWrite || {}, format, content);
     } else {
       throw new Error(`Invalid collection format: ${format}`);
     }
@@ -1976,7 +2039,13 @@ const registerRendererEventHandlers = (mainWindow, watcher) => {
 
   ipcMain.handle('renderer:convert-to-json', async (event, item, content, format = 'bru') => {
     try {
-      const jsonContent = await parseRequestViaWorker(content, { format });
+      let jsonContent = await parseRequestViaWorker(content, { format });
+      if (item?.pathname) {
+        const collectionPath = findCollectionPathByItemPath(item.pathname);
+        if (collectionPath) {
+          jsonContent = loadRequestCustomSettings(getCustomSettingsCollectionPath(collectionPath, item.pathname), item.pathname, jsonContent);
+        }
+      }
       const json = hydrateRequestWithUuid(jsonContent, item?.pathname);
       return json;
     } catch (error) {
@@ -2251,6 +2320,7 @@ const registerRendererEventHandlers = (mainWindow, watcher) => {
         hydrateRequestWithUuid(file.data, pathname);
         mainWindow.webContents.send('main:collection-tree-updated', 'addFile', file);
         file.data = await parseRequestViaWorker(bruContent, { format: 'bru' });
+        file.data = loadRequestCustomSettingsWithMigration(findCustomSettingsCollectionPath(pathname), pathname, file.data, 'bru');
         file.partial = false;
         file.loading = true;
         file.size = sizeInMB(fileStats?.size);
@@ -2301,6 +2371,7 @@ const registerRendererEventHandlers = (mainWindow, watcher) => {
         hydrateRequestWithUuid(file.data, pathname);
         mainWindow.webContents.send('main:collection-tree-updated', 'addFile', file);
         file.data = parseRequest(bruContent);
+        file.data = loadRequestCustomSettingsWithMigration(findCustomSettingsCollectionPath(pathname), pathname, file.data, getCollectionFormat(findCollectionPathByItemPath(pathname)));
         file.partial = false;
         file.loading = true;
         file.size = sizeInMB(fileStats?.size);
@@ -2359,7 +2430,7 @@ const registerRendererEventHandlers = (mainWindow, watcher) => {
       try {
         const parsedData = await parseLargeRequestWithRedaction(bruContent, 'bru');
 
-        file.data = parsedData;
+        file.data = loadRequestCustomSettingsWithMigration(findCustomSettingsCollectionPath(pathname), pathname, parsedData, 'bru');
         file.loading = false;
         file.partial = false;
         file.size = sizeInMB(fileStats?.size);
@@ -2503,7 +2574,7 @@ const registerRendererEventHandlers = (mainWindow, watcher) => {
 
       const content = await stringifyRequestViaWorker(request, { format });
 
-      const { pathname: targetPathname } = await writeFileUnique(targetDirname, filenameWithoutExt, format, content);
+      const { pathname: targetPathname } = await createRequestWithCustomSettings(collectionPath, targetDirname, filenameWithoutExt, format, request, content);
 
       if (request.examples) {
         syncExampleUidsCache(collectionPath, request.examples);

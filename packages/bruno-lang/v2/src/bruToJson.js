@@ -243,10 +243,23 @@ const mapRequestParams = (pairList = [], type) => {
       enabled = false;
     }
 
+    const encodingAnnotations = ['encodeName', 'encodeValue', 'encodeValueAsBase64'];
+    const paramAnnotations = type === 'query'
+      ? rawAnnotations?.filter((annotation) => !encodingAnnotations.includes(annotation.name)
+        || !['true', 'false'].includes(annotation.value))
+      : rawAnnotations;
     const result = { name, value, enabled, type };
-    if (rawAnnotations && rawAnnotations.length) {
-      result.annotations = rawAnnotations;
-      applyDescriptionFromAnnotations(result, rawAnnotations);
+    if (type === 'query' && rawAnnotations) {
+      encodingAnnotations.forEach((annotationName) => {
+        const annotation = rawAnnotations.find((entry) => entry.name === annotationName);
+        if (annotation?.value === 'true' || annotation?.value === 'false') {
+          result[annotationName] = annotation.value === 'true';
+        }
+      });
+    }
+    if (paramAnnotations && paramAnnotations.length) {
+      result.annotations = paramAnnotations;
+      applyDescriptionFromAnnotations(result, paramAnnotations);
     }
     return result;
   });
@@ -784,11 +797,13 @@ const sem = grammar.createSemantics().addAttribute('ast', {
   authbearer(_1, dictionary) {
     const auth = mapPairListToKeyValPairs(dictionary.ast, false);
     const tokenKey = _.find(auth, { name: 'token' });
+    const prefixKey = _.find(auth, { name: 'prefix' });
     const token = tokenKey ? tokenKey.value : '';
     return {
       auth: {
         bearer: {
-          token
+          token,
+          ...(prefixKey ? { prefix: prefixKey.value } : {})
         }
       }
     };

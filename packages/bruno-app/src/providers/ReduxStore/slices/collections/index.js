@@ -1224,6 +1224,11 @@ export const collectionsSlice = createSlice({
             urlQueryParam.uid = existingQueryParam?.uid || uuid();
             urlQueryParam.enabled = true;
             urlQueryParam.type = 'query';
+            if (existingQueryParam) {
+              urlQueryParam.encodeName = existingQueryParam.encodeName;
+              urlQueryParam.encodeValue = existingQueryParam.encodeValue;
+              urlQueryParam.encodeValueAsBase64 = existingQueryParam.encodeValueAsBase64;
+            }
 
             // once found, remove it - trying our best here to accommodate duplicate query params
             if (existingQueryParam) {
@@ -1365,14 +1370,28 @@ export const collectionsSlice = createSlice({
         item.draft = cloneDeep(item);
       }
       const existingOtherParams = item.draft.request.params?.filter((p) => p.type !== 'query') || [];
-      const newQueryParams = map(params, ({ uid, name = '', value = '', description = '', annotations = null, type = 'query', enabled = true }) => ({
+      const newQueryParams = map(params, ({
+        uid,
+        name = '',
+        value = '',
+        description = '',
+        annotations = null,
+        type = 'query',
+        enabled = true,
+        encodeName,
+        encodeValue,
+        encodeValueAsBase64
+      }) => ({
         uid: uid || uuid(),
         name,
         value,
         description,
         annotations,
         type,
-        enabled
+        enabled,
+        encodeName,
+        encodeValue,
+        encodeValueAsBase64
       }));
 
       item.draft.request.params = [...newQueryParams, ...existingOtherParams];
@@ -3353,6 +3372,9 @@ export const collectionsSlice = createSlice({
                 item.draft = null;
               }
             } else {
+              const draftRawMatchesFile = item.draft?.raw !== undefined
+                && item.draft.raw !== item.raw
+                && item.draft.raw === file.data.raw;
               item.name = file.data.name;
               item.type = file.data.type;
               item.seq = file.data.seq;
@@ -3369,7 +3391,6 @@ export const collectionsSlice = createSlice({
               // This preserves characters typed during autosave
               // The raw comparison is guarded so an undefined === undefined match
               // (when neither side has raw content) does not wipe a genuine draft
-              const draftRawMatchesFile = item.draft?.raw !== undefined && item.draft.raw === file.data.raw;
               if (item.draft && (areItemsTheSameExceptSeqUpdate(item.draft, file.data) || draftRawMatchesFile)) {
                 item.draft = null;
               }

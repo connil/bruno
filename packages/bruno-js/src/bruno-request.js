@@ -209,7 +209,7 @@ class BrunoRequest {
       return 'oauth2';
     } else if (this.req?.oauth1config) {
       return 'oauth1';
-    } else if (headers?.['Authorization']?.startsWith('Bearer')) {
+    } else if ((this.req.bearerAuth && headers?.['Authorization'] !== undefined) || headers?.['Authorization']?.startsWith('Bearer')) {
       return 'bearer';
     } else if (headers?.['Authorization']?.startsWith('Basic') || this.req?.auth?.username) {
       return 'basic';

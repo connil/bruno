@@ -1,4 +1,5 @@
 const { describe, it, expect, beforeEach } = require('@jest/globals');
+const path = require('node:path');
 jest.mock('../../src/utils/filesystem', () => ({
   isLargeFile: jest.fn()
 }));
@@ -6,6 +7,44 @@ const filesystemUtils = require('../../src/utils/filesystem');
 const prepareRequest = require('../../src/runner/prepare-request');
 
 describe('prepare-request: prepareRequest', () => {
+  describe.each(['request', 'collection', 'folder'])('Bearer auth at %s level', (scope) => {
+    it.each([
+      [undefined, 'Bearer secret'],
+      ['Token', 'Token secret'],
+      ['', 'Bearer secret'],
+      ['{{scheme}}', 'Custom secret']
+    ])('uses prefix %j in the prepared and interpolated request', async (prefix, expected) => {
+      const auth = { mode: 'bearer', bearer: { token: '{{token}}', ...(prefix !== undefined ? { prefix } : {}) } };
+      const item = {
+        uid: 'request',
+        type: 'http-request',
+        pathname: path.join(path.sep, 'bearer-prefix', 'folder', 'request.bru'),
+        request: {
+          method: 'GET',
+          url: 'https://example.com',
+          headers: [],
+          params: [],
+          body: { mode: 'none' },
+          script: {},
+          vars: {},
+          auth: scope === 'request' ? auth : { mode: 'inherit' }
+        }
+      };
+      const collection = {
+        pathname: path.join(path.sep, 'bearer-prefix'),
+        root: { request: { auth } },
+        items: scope === 'folder'
+          ? [{ uid: 'folder', type: 'folder', pathname: path.dirname(item.pathname), root: { request: { auth } }, items: [item] }]
+          : []
+      };
+      const prepared = await prepareRequest(item, collection);
+      expect(prepared.bearerAuth).toBe(true);
+      const interpolateVars = require('../../src/runner/interpolate-vars');
+      const result = interpolateVars(prepared, { scheme: 'Custom', token: 'secret' });
+      expect(result.headers.Authorization).toBe(expected);
+    });
+  });
+
   describe('Decomments request body', () => {
     it('If request body is valid JSON', async () => {
       const body = { mode: 'json', json: '{\n"test": "{{someVar}}" // comment\n}' };

@@ -141,6 +141,11 @@ const interpolateVars = (request, envVariables = {}, runtimeVariables = {}, proc
     param.value = _interpolate(param.value);
   });
 
+  each(request?.queryParams, (param) => {
+    param.name = _interpolate(param.name);
+    param.value = _interpolate(param.value);
+  });
+
   if (request?.pathParams?.length) {
     let url = request.url;
 

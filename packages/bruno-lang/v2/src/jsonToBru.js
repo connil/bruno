@@ -4,7 +4,12 @@ const jsonToExampleBru = require('./example/jsonToBru');
 
 const enabled = (items = [], key = 'enabled') => items.filter((item) => item[key]);
 const disabled = (items = [], key = 'enabled') => items.filter((item) => !item[key]);
-
+const queryParamAnnotations = (item) => serializeAnnotations(
+  buildAnnotationsFromKVItem(item).filter(
+    (annotation) => !['encodeName', 'encodeValue', 'encodeValueAsBase64'].includes(annotation.name)
+      || !['true', 'false'].includes(annotation.value)
+  )
+);
 // remove the last line if two new lines are found
 const stripLastLine = (text) => {
   if (!text || !text.length) return text;
@@ -120,14 +125,21 @@ const jsonToBru = (json) => {
 
   if (params && params.length) {
     const queryParams = params.filter((param) => param.type === 'query');
-    const pathParams = params.filter((param) => param.type === 'path');
+    // Request files carry one selected value per name; alternatives live in the collection sidecar.
+    const selectedPaths = new Map();
+    for (const param of params) {
+      if (param.type !== 'path') continue;
+      const previous = selectedPaths.get(param.name);
+      if (!previous || (previous.enabled === false && param.enabled !== false)) selectedPaths.set(param.name, param);
+    }
+    const pathParams = [...selectedPaths.values()];
 
     if (queryParams.length) {
       bru += 'params:query {';
       if (enabled(queryParams).length) {
         bru += `\n${indentString(
           enabled(queryParams)
-            .map((item) => `${serializeAnnotations(buildAnnotationsFromKVItem(item))}${getKeyString(item.name)}: ${getValueString(item.value)}`)
+            .map((item) => `${queryParamAnnotations(item)}${getKeyString(item.name)}: ${getValueString(item.value)}`)
             .join('\n')
         )}`;
       }
@@ -135,7 +147,7 @@ const jsonToBru = (json) => {
       if (disabled(queryParams).length) {
         bru += `\n${indentString(
           disabled(queryParams)
-            .map((item) => `${serializeAnnotations(buildAnnotationsFromKVItem(item))}~${getKeyString(item.name)}: ${getValueString(item.value)}`)
+            .map((item) => `${queryParamAnnotations(item)}~${getKeyString(item.name)}: ${getValueString(item.value)}`)
             .join('\n')
         )}`;
       }
@@ -146,7 +158,7 @@ const jsonToBru = (json) => {
     if (pathParams.length) {
       bru += 'params:path {';
 
-      bru += `\n${indentString(pathParams.map((item) => `${serializeAnnotations(buildAnnotationsFromKVItem(item))}${item.enabled === false ? '~' : ''}${item.name}: ${getValueString(item.value)}`).join('\n'))}`;
+      bru += `\n${indentString(pathParams.map((item) => `${serializeAnnotations(buildAnnotationsFromKVItem(item))}${item.name}: ${getValueString(item.enabled === false ? '' : item.value)}`).join('\n'))}`;
 
       bru += '\n}\n\n';
     }

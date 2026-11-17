@@ -8,13 +8,15 @@ const { ipcMain, app } = require('electron');
 const {
   parseRequest,
   stringifyRequestViaWorker,
+  deleteRequestCustomSettings,
   parseCollection,
   stringifyCollection,
   stringifyFolder
 } = require('@usebruno/filestore');
 const { openApiToBruno } = require('@usebruno/converters');
 const { resolveEnvironmentInheritance, buildQueryString, parseQueryParams, getFilenameWithFormat } = require('@usebruno/common/utils');
-const { writeFile, writeFileUnique, sanitizeName, getCollectionFormat, posixifyPath } = require('../utils/filesystem');
+const { writeFile, sanitizeName, getCollectionFormat, posixifyPath } = require('../utils/filesystem');
+const { writeRequestWithCustomSettings, createRequestWithCustomSettings } = require('../utils/request-custom-settings');
 const { derefSpecObject, declaredSchemaNode, declaresKey, declaredKeysOf, declaredChild, declaredItems, declaresOnlyScalars, keyLeavesShapeOpen, itemsLeaveShapeOpen, otherAlternativeKeys } = require('../utils/openapi-schema');
 const { COLLECTION_ROOT_BASENAMES, FOLDER_ROOT_BASENAMES } = require('../utils/mount');
 
@@ -1677,7 +1679,7 @@ const registerOpenAPISyncIpc = (mainWindow) => {
 
           const requestContent = await stringifyRequestViaWorker(specItem, { format });
           const filename = sanitizeName(getFilenameWithFormat(specItem, format));
-          await writeFileUnique(targetFolder, filename.replace(/\.(bru|yml)$/, ''), format, requestContent);
+          await createRequestWithCustomSettings(collectionPath, targetFolder, filename.replace(/\.(bru|yml)$/, ''), format, specItem, requestContent);
         }
 
         // Save spec in original format
@@ -1746,6 +1748,7 @@ const registerOpenAPISyncIpc = (mainWindow) => {
                       const removedPath = normalizeUrlPath(removed.path);
                       if (method === removed.method.toUpperCase() && url === removedPath) {
                         fs.unlinkSync(filePath);
+                        deleteRequestCustomSettings(collectionPath, filePath);
                         break;
                       }
                     }
@@ -1782,6 +1785,7 @@ const registerOpenAPISyncIpc = (mainWindow) => {
                   const fileUrlPath = normalizeUrlPath(parsed.request.url);
                   if (fileMethod === endpoint.method && fileUrlPath === endpoint.path) {
                     fs.unlinkSync(fullPath);
+                    deleteRequestCustomSettings(collectionPath, fullPath);
                   }
                 }
               } catch (err) {
@@ -1813,7 +1817,7 @@ const registerOpenAPISyncIpc = (mainWindow) => {
 
               const requestContent = await stringifyRequestViaWorker(newItem, { format });
               const filename = sanitizeName(getFilenameWithFormat(newItem, format));
-              await writeFileUnique(targetFolder, filename.replace(/\.(bru|yml)$/, ''), format, requestContent);
+              await createRequestWithCustomSettings(collectionPath, targetFolder, filename.replace(/\.(bru|yml)$/, ''), format, newItem, requestContent);
             }
           }
         }
@@ -2057,7 +2061,7 @@ const registerOpenAPISyncIpc = (mainWindow) => {
 
           const requestContent = await stringifyRequestViaWorker(specItem, { format });
           const filename = sanitizeName(getFilenameWithFormat(specItem, format));
-          await writeFileUnique(targetFolder, filename.replace(/\.(bru|yml)$/, ''), format, requestContent);
+          await createRequestWithCustomSettings(collectionPath, targetFolder, filename.replace(/\.(bru|yml)$/, ''), format, specItem, requestContent);
           addedCount++;
         }
       }
@@ -2119,6 +2123,7 @@ const registerOpenAPISyncIpc = (mainWindow) => {
             continue;
           }
           fs.unlinkSync(endpoint.pathname);
+          deleteRequestCustomSettings(collectionPath, endpoint.pathname);
           deletedCount++;
         }
       }

@@ -25,7 +25,7 @@ jest.mock('@usebruno/filestore', () => {
 });
 
 const { ipcMain } = require('electron');
-const { parseRequest, stringifyRequest, stringifyCollection } = require('@usebruno/filestore');
+const { parseRequest, stringifyRequest, stringifyCollection, saveRequestCustomSettings, loadRequestCustomSettings } = require('@usebruno/filestore');
 const { openApiToBruno } = require('@usebruno/converters');
 const registerOpenAPISyncIpc = require('../../src/ipc/openapi-sync');
 
@@ -127,6 +127,17 @@ describe.each(['bru', 'yml'])('openapi sync with preserve values in a %s collect
   afterEach(() => {
     fs.rmSync(collectionPath, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
     fs.rmSync(mockUserData, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
+  });
+
+  it('removes query encoding settings when an endpoint is deleted', async () => {
+    writeUserRequestFrom(formSpec({ name: string }, 'X-Test'), (request) => request);
+    const item = parseRequest(fs.readFileSync(requestFile, 'utf8'), { format });
+    item.request.params.find((param) => param.type === 'query').encodeValue = false;
+    saveRequestCustomSettings(collectionPath, requestFile, item, format);
+    await ipcMain._getHandler('renderer:delete-endpoints')({}, { collectionPath, endpoints: [{ pathname: requestFile }] });
+    const replacement = parseRequest(stringifyRequest(item, { format }), { format });
+    loadRequestCustomSettings(collectionPath, requestFile, replacement);
+    expect(replacement.request.params.find((param) => param.type === 'query').encodeValue).toBeUndefined();
   });
 
   it('drops the fields the spec does not have, and the preview shows what the sync writes', async () => {

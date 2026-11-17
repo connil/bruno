@@ -32,6 +32,12 @@ describe('prepareWsRequest: API Key Query Params', () => {
     items: []
   });
 
+  it.each([['Token', 'Token secret'], ['', 'Bearer secret']])('uses bearer prefix %j for the WebSocket handshake', async (prefix, expected) => {
+    const item = createMockItem({ mode: 'bearer', bearer: { token: 'secret', prefix } });
+    const result = await prepareWsRequest(item, createMockCollection(), { variables: [] }, {});
+    expect(result.headers.Authorization).toBe(expected);
+  });
+
   describe('API Key with Query Params placement', () => {
     it('should append API key to URL when placement is queryparams', async () => {
       const item = createMockItem({

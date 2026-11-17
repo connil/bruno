@@ -1,6 +1,7 @@
 import React from 'react';
 import { IconCheck, IconCopy } from '@tabler/icons';
 import toast from 'react-hot-toast';
+import { interpolate, utils } from '@usebruno/common';
 import useCopyToClipboard from 'hooks/useCopyToClipboard';
 import ActionIcon from 'ui/ActionIcon';
 import { getAllVariables } from 'utils/collections';
@@ -23,10 +24,20 @@ const UrlPreview = ({ item, collection }) => {
     variables,
     { raw: true }
   );
+  const interpolatedParams = (request.params || []).map((param) => ({
+    ...param,
+    name: interpolate(param.name || '', variables),
+    value: interpolate(param.value || '', variables)
+  }));
+  const previewWithParamSettings = utils.encodeUrlWithQueryParamSettings(
+    preview,
+    interpolatedParams,
+    false
+  ) || preview;
 
   const handleCopy = async () => {
     try {
-      await copyToClipboard(preview);
+      await copyToClipboard(previewWithParamSettings);
     } catch (error) {
       toast.error('Failed to copy URL');
     }
@@ -34,7 +45,7 @@ const UrlPreview = ({ item, collection }) => {
 
   return (
     <StyledWrapper className="mt-1 w-full flex items-start gap-1" data-testid="request-url-preview" aria-label="URL preview">
-      <span className="preview-url min-w-0">{preview}</span>
+      <span className="preview-url min-w-0">{previewWithParamSettings}</span>
       <ActionIcon
         type="button"
         size="xs"

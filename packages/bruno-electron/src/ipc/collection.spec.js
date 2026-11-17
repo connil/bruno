@@ -32,7 +32,7 @@ jest.mock('../utils/filesystem', () => ({
   removePath: jest.fn(),
   getPaths: jest.fn(async (src) => [src]),
   withDirLock: jest.fn((dir, cb) => cb()),
-  getUniqueRenamePath: jest.fn((p) => p)
+  getUniqueRenamePath: jest.fn((oldPath, desiredPath) => desiredPath)
 }));
 
 jest.mock('../cache/requestUids', () => ({
@@ -57,10 +57,27 @@ jest.mock('../app/collection-watcher', () => {
 });
 
 jest.mock('@usebruno/filestore', () => ({
+  CUSTOM_SETTINGS_FILENAME: '.bruno-custom.json',
+  LEGACY_CUSTOM_SETTINGS_FILENAME: '.bruno-query-encoding.json',
+  migrateLegacyRequestSettings: jest.fn(),
   parseRequest: jest.fn(() => ({})),
+  loadRequestCustomSettings: jest.fn((collectionPath, pathname, item) => item),
+  saveRequestCustomSettings: jest.fn(),
+  copyRequestCustomSettings: jest.fn(),
+  moveRequestCustomSettings: jest.fn(),
+  deleteRequestCustomSettings: jest.fn(),
   stringifyRequest: jest.fn(() => 'mock-content-stringified'),
   stringifyRequestViaWorker: jest.fn(async () => 'mock-request-stringified'),
-  stringifyCollection: jest.fn(async () => 'mock-collection-stringified')
+  stringifyCollection: jest.fn(async () => 'mock-collection-stringified'),
+  stringifyFolder: jest.fn(async () => 'mock-folder-stringified')
+}));
+
+jest.mock('../utils/request-custom-settings', () => ({
+  ...jest.requireActual('../utils/request-custom-settings'),
+  writeRequestWithCustomSettings: async (collectionPath, pathname, item, format, content) => {
+    require('@usebruno/filestore').saveRequestCustomSettings(collectionPath, pathname, item, format);
+    await require('../utils/filesystem').writeFile(pathname, content);
+  }
 }));
 
 const fsPromises = require('node:fs').promises;
@@ -72,6 +89,7 @@ const registerCollectionsIpc = require('./collection');
 
 const { copyPathTo, posixifyPath } = require('../utils/filesystem');
 const { moveRequestUid } = require('../cache/requestUids');
+const { copyRequestCustomSettings, deleteRequestCustomSettings, loadRequestCustomSettings, saveRequestCustomSettings } = require('@usebruno/filestore');
 
 describe('IPC collection handlers', () => {
   let mainWindow;
@@ -80,6 +98,69 @@ describe('IPC collection handlers', () => {
     jest.clearAllMocks();
     mainWindow = { webContents: { send: jest.fn() } };
     registerCollectionsIpc(mainWindow, {});
+  });
+
+  it.each(['bru', 'yml'])('persists prefix-only collection and folder edits in the %s sidecar', async (format) => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'bruno-root-bearer-'));
+    const { getAllWatcherPaths } = require('../app/collection-watcher');
+    const previous = getAllWatcherPaths.getMockImplementation();
+    getAllWatcherPaths.mockReturnValue([directory]);
+    try {
+      const filename = format === 'bru' ? 'collection.bru' : 'opencollection.yml';
+      if (format === 'bru') fs.writeFileSync(path.join(directory, 'bruno.json'), '{}');
+      fs.writeFileSync(path.join(directory, filename), 'mock-collection-stringified');
+      fs.mkdirSync(path.join(directory, 'API'));
+      const root = { request: { auth: { mode: 'bearer', bearer: { token: 'secret', prefix: 'Custom' } } } };
+      const save = jest.requireActual('@usebruno/filestore').saveRequestCustomSettings;
+      saveRequestCustomSettings.mockImplementationOnce(save).mockImplementationOnce(save);
+      await ipcMain._getHandler('renderer:save-collection-root')({}, directory, root, {});
+      await ipcMain._getHandler('renderer:save-folder-root')({}, {
+        name: 'API', root, folderPathname: path.join(directory, 'API'), collectionPathname: directory
+      });
+      expect(JSON.parse(fs.readFileSync(path.join(directory, '.bruno-custom.json'), 'utf8')).requests).toEqual({
+        '/': { bearerTokenPrefix: 'Custom' },
+        'API/': { bearerTokenPrefix: 'Custom' }
+      });
+      root.request.auth.bearer.prefix = '';
+      saveRequestCustomSettings.mockImplementationOnce(save);
+      await ipcMain._getHandler('renderer:save-collection-root')({}, directory, root, {});
+      expect(JSON.parse(fs.readFileSync(path.join(directory, '.bruno-custom.json'), 'utf8')).requests)
+        .toEqual({ 'API/': { bearerTokenPrefix: 'Custom' } });
+    } finally {
+      getAllWatcherPaths.mockImplementation(previous);
+      fs.rmSync(directory, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
+    }
+  });
+
+  it.each(['bru', 'yml'])('keeps cloned folder path alternatives in the %s collection sidecar', async (format) => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'bruno-clone-custom-'));
+    const { getAllWatcherPaths } = require('../app/collection-watcher');
+    const previous = getAllWatcherPaths.getMockImplementation();
+    getAllWatcherPaths.mockReturnValue([directory]);
+    try {
+      fs.writeFileSync(path.join(directory, format === 'bru' ? 'bruno.json' : 'opencollection.yml'), '');
+      const item = {
+        type: 'http-request',
+        filename: `request.${format}`,
+        request: { params: [
+          { name: 'id', type: 'path', value: 'other', enabled: false },
+          { name: 'id', type: 'path', value: 'selected', enabled: true }
+        ] }
+      };
+      saveRequestCustomSettings.mockImplementationOnce(jest.requireActual('@usebruno/filestore').saveRequestCustomSettings);
+      await ipcMain._getHandler('renderer:clone-folder')(
+        {}, { items: [item] }, path.join(directory, 'Copy'), directory
+      );
+      expect(fs.existsSync(path.join(directory, 'Copy', `request.${format}`))).toBe(true);
+      const sidecar = JSON.parse(fs.readFileSync(path.join(directory, '.bruno-custom.json'), 'utf8'));
+      expect(sidecar.requests['Copy/request'].pathParams).toEqual([
+        { name: 'id', value: 'other', enabled: false },
+        { name: 'id', value: 'selected', enabled: true }
+      ]);
+    } finally {
+      getAllWatcherPaths.mockImplementation(previous);
+      fs.rmSync(directory, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
+    }
   });
 
   describe('renderer:move-item', () => {
@@ -97,13 +178,31 @@ describe('IPC collection handlers', () => {
       let callOrder = [];
       moveRequestUid.mockImplementation(() => callOrder.push('moveRequestUid'));
       copyPathTo.mockImplementation(async () => callOrder.push('copyPathTo'));
+      copyRequestCustomSettings.mockImplementation(() => callOrder.push('copyEncoding'));
+      deleteRequestCustomSettings.mockImplementation(() => callOrder.push('deleteEncoding'));
 
       await moveItemHandler({}, {
         targetDirname: path.join(os.tmpdir(), 'fake', 'target'),
         sourcePathname: path.join(os.tmpdir(), 'fake', 'source', 'request.bru')
       });
 
-      expect(callOrder).toEqual(['moveRequestUid', 'copyPathTo']);
+      expect(callOrder).toEqual(['moveRequestUid', 'copyEncoding', 'copyPathTo', 'deleteEncoding']);
+      expect(copyRequestCustomSettings).toHaveBeenCalledWith(
+        path.join(os.tmpdir(), 'fake', 'source'),
+        path.join(os.tmpdir(), 'fake', 'source', 'request.bru'),
+        path.join(os.tmpdir(), 'fake', 'target'),
+        path.join(os.tmpdir(), 'fake', 'target', 'request.bru')
+      );
+    });
+
+    it('does not move the files or remove source settings when copying settings fails', async () => {
+      copyRequestCustomSettings.mockImplementationOnce(() => { throw new Error('sidecar is read-only'); });
+      await expect(ipcMain._getHandler('renderer:move-item')({}, {
+        targetDirname: path.join(os.tmpdir(), 'fake', 'target'),
+        sourcePathname: path.join(os.tmpdir(), 'fake', 'source', 'nested')
+      })).rejects.toThrow('sidecar is read-only');
+      expect(copyPathTo).not.toHaveBeenCalled();
+      expect(deleteRequestCustomSettings).not.toHaveBeenCalled();
     });
   });
 
@@ -122,6 +221,10 @@ describe('IPC collection handlers', () => {
       let callOrder = [];
       moveRequestUid.mockImplementation(() => callOrder.push('moveRequestUid'));
       fsPromises.writeFile.mockImplementation(async () => callOrder.push('writeFile'));
+      loadRequestCustomSettings.mockImplementationOnce((collectionPath, pathname, item) => ({
+        ...item,
+        request: { params: [{ name: 'q', type: 'query', encodeValue: false }] }
+      }));
 
       await moveItemCrossFormatHandler({}, {
         targetDirname: path.join(os.tmpdir(), 'fake', 'target'),
@@ -131,6 +234,34 @@ describe('IPC collection handlers', () => {
       });
 
       expect(callOrder).toEqual(['moveRequestUid', 'writeFile']);
+      expect(saveRequestCustomSettings).toHaveBeenCalledWith(
+        path.join(os.tmpdir(), 'fake', 'target'),
+        path.join(os.tmpdir(), 'fake', 'target', 'request.yml'),
+        expect.objectContaining({ request: { params: [{ name: 'q', type: 'query', encodeValue: false }] } }),
+        'yml'
+      );
+    });
+  });
+
+  describe('request saves', () => {
+    beforeEach(() => {
+      jest.spyOn(fs, 'existsSync').mockReturnValue(true);
+    });
+
+    afterEach(() => {
+      fs.existsSync.mockRestore();
+    });
+
+    it.each(['renderer:save-request', 'renderer:save-multiple-requests'])('persists sparse settings for %s', async (channel) => {
+      const pathname = path.join(os.tmpdir(), 'fake', 'source', 'Search.bru');
+      const item = { request: { params: [{ name: 'q', type: 'query', encodeValue: false }] } };
+      const handler = ipcMain._getHandler(channel);
+      if (channel === 'renderer:save-request') {
+        await handler({}, pathname, item, 'bru');
+      } else {
+        await handler({}, [{ pathname, item, format: 'bru' }]);
+      }
+      expect(saveRequestCustomSettings).toHaveBeenCalledWith(path.dirname(pathname), pathname, item, 'bru');
     });
   });
 

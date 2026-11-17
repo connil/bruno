@@ -6,6 +6,10 @@ const {
   parseCollection,
   stringifyCollection,
   parseRequestViaWorker,
+  loadRequestCustomSettings,
+  saveRequestCustomSettings,
+  CUSTOM_SETTINGS_FILENAME,
+  LEGACY_CUSTOM_SETTINGS_FILENAME,
   stringifyRequestViaWorker,
   parseFolderViaWorker,
   stringifyFolderViaWorker,
@@ -361,7 +365,8 @@ const collectBruFilesForMigration = (root, extraIgnored = []) => {
  *  - finalizing: copy bru sources + bruno.json into backupRootDir, then unlink them
  *                (rollback = copy them back, then delete the written yml)
  *
- * Non-.bru files are never touched. Pre-existing target yml files abort the migration
+ * The custom settings sidecar is updated for legacy inline settings and restored on failure.
+ * Other non-.bru files are never touched. Pre-existing target yml files abort the migration
  * up front — rolling back must never delete a file this run didn't create.
  */
 const migrateCollectionOnDisk = async ({
@@ -376,6 +381,11 @@ const migrateCollectionOnDisk = async ({
   const collectionBruPath = path.join(collectionPathname, 'collection.bru');
   const envDirPath = path.join(collectionPathname, 'environments');
   const ocYmlPath = path.join(collectionPathname, 'opencollection.yml');
+  const encodingPath = path.join(collectionPathname, CUSTOM_SETTINGS_FILENAME);
+  const legacyEncodingPath = path.join(collectionPathname, LEGACY_CUSTOM_SETTINGS_FILENAME);
+  let originalEncoding;
+  let originalLegacyEncoding;
+  let encodingTouched = false;
 
   const writtenYmlFiles = [];
   // Originals already unlinked, restorable from the backup copy
@@ -389,7 +399,7 @@ const migrateCollectionOnDisk = async ({
   try {
     let collectionRoot = {};
     if (fs.existsSync(collectionBruPath)) {
-      collectionRoot = parseCollection(fs.readFileSync(collectionBruPath, 'utf8'), { format: 'bru' });
+      collectionRoot = loadRequestCustomSettings(collectionPathname, collectionBruPath, parseCollection(fs.readFileSync(collectionBruPath, 'utf8'), { format: 'bru' }));
       stripBruExtInParsedScripts(collectionRoot);
     }
 
@@ -444,24 +454,27 @@ const migrateCollectionOnDisk = async ({
 
         let ymlPath;
         let ymlContent;
+        let requestData;
         if (path.normalize(dirname) === path.normalize(envDirPath)) {
           const envData = await parseEnvironmentViaWorker(bruContent, { format: 'bru' });
           ymlPath = bruFilePath.replace(/\.bru$/, '.yml');
           ymlContent = await stringifyEnvironmentViaWorker(envData, { format: 'yml' });
         } else if (basename === 'folder.bru') {
-          const folderData = await parseFolderViaWorker(bruContent, { format: 'bru' });
+          const folderData = loadRequestCustomSettings(collectionPathname, bruFilePath, await parseFolderViaWorker(bruContent, { format: 'bru' }));
+          requestData = folderData;
           stripBruExtInParsedScripts(folderData);
           ymlPath = path.join(dirname, 'folder.yml');
           ymlContent = await stringifyFolderViaWorker(folderData, { format: 'yml' });
         } else {
-          const requestData = await parseRequestViaWorker(bruContent, { format: 'bru' });
+          // Sidecar keys are extensionless, so the existing sidecar remains valid after migration.
+          requestData = loadRequestCustomSettings(collectionPathname, bruFilePath, await parseRequestViaWorker(bruContent, { format: 'bru' }));
           stripBruExtInParsedScripts(requestData);
           ymlPath = bruFilePath.replace(/\.bru$/, '.yml');
           ymlContent = await stringifyRequestViaWorker(requestData, { format: 'yml' });
         }
 
         checkCancelled();
-        conversionPlan.push({ ymlPath, ymlContent });
+        conversionPlan.push({ ymlPath, ymlContent, requestData });
         tabPathMap[bruFilePath] = ymlPath;
       } catch (parseError) {
         if (parseError?.message === MIGRATION_CANCELLED_MESSAGE) {
@@ -487,15 +500,23 @@ const migrateCollectionOnDisk = async ({
     }
 
     // Phase 2: write the converted yml files
+    originalEncoding = fs.existsSync(encodingPath) ? fs.readFileSync(encodingPath) : null;
+    originalLegacyEncoding = fs.existsSync(legacyEncodingPath) ? fs.readFileSync(legacyEncodingPath) : null;
     const totalWrites = conversionPlan.length + 1;
     for (let i = 0; i < conversionPlan.length; i++) {
       checkCancelled();
-      const { ymlPath, ymlContent } = conversionPlan[i];
+      const { ymlPath, ymlContent, requestData } = conversionPlan[i];
+      if (requestData) {
+        encodingTouched = true;
+        saveRequestCustomSettings(collectionPathname, ymlPath, requestData, 'yml');
+      }
       await writeFile(ymlPath, ymlContent);
       writtenYmlFiles.push(ymlPath);
       emitProgress('writing', i + 1, totalWrites);
     }
     checkCancelled();
+    encodingTouched = true;
+    saveRequestCustomSettings(collectionPathname, ocYmlPath, collectionRoot, 'yml');
     await writeFile(ocYmlPath, ymlCollectionContent);
     writtenYmlFiles.push(ocYmlPath);
     emitProgress('writing', totalWrites, totalWrites);
@@ -550,6 +571,18 @@ const migrateCollectionOnDisk = async ({
           fs.unlinkSync(ymlFile);
         }
       } catch (_) {}
+    }
+    if (encodingTouched) {
+      try {
+        if (originalEncoding) {
+          fs.writeFileSync(encodingPath, originalEncoding);
+        } else if (fs.existsSync(encodingPath)) {
+          fs.unlinkSync(encodingPath);
+        }
+        if (originalLegacyEncoding) fs.writeFileSync(legacyEncodingPath, originalLegacyEncoding);
+      } catch (restoreError) {
+        reportError(`"${encodingPath}" could not be restored after the failed migration: ${restoreError.message}`);
+      }
     }
     if (backupDir && !keepBackup) {
       await fsExtra.remove(backupDir).catch(() => {});

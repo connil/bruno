@@ -121,6 +121,25 @@ describe('URL preview', () => {
     expect(screen.getByTestId('request-url-preview')).toHaveTextContent('https://example.com/users/a/b c/:missing#details');
   });
 
+  it('applies each query parameter encoding option in the preview', () => {
+    const item = {
+      uid: 'request',
+      request: {
+        url: 'https://example.com/search?user id=José Doe&raw=value%20x&token=hello',
+        params: [
+          { type: 'query', name: 'user id', value: 'José Doe', enabled: true, encodeName: true, encodeValue: true },
+          { type: 'query', name: 'raw', value: 'value%20x', enabled: true, encodeName: false, encodeValue: false },
+          { type: 'query', name: 'token', value: 'hello', enabled: true, encodeName: false, encodeValue: true, encodeValueAsBase64: true }
+        ]
+      }
+    };
+    render(renderPreview(item));
+
+    expect(screen.getByTestId('request-url-preview')).toHaveTextContent(
+      'https://example.com/search?user%20id=Jos%C3%A9%20Doe&raw=value%20x&token=aGVsbG8%3D'
+    );
+  });
+
   it('hides the preview when the draft URL is cleared', () => {
     render(renderPreview({
       uid: 'request',

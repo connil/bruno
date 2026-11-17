@@ -231,7 +231,8 @@ const authWsseSchema = Yup.object({
   .noUnknown(true)
 
 const authBearerSchema = Yup.object({
-  token: Yup.string().nullable()
+  token: Yup.string().nullable(),
+  prefix: Yup.string().nullable()
 })
   .noUnknown(true)
 
@@ -450,7 +451,10 @@ const requestParamsSchema = Yup.object({
     )
     .nullable(),
   type: Yup.string().oneOf(['query', 'path']).required('type is required'),
-  enabled: Yup.boolean()
+  enabled: Yup.boolean(),
+  encodeName: Yup.boolean().nullable(),
+  encodeValue: Yup.boolean().nullable(),
+  encodeValueAsBase64: Yup.boolean().nullable()
 })
   .noUnknown(true)
 

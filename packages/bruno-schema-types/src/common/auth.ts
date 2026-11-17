@@ -19,6 +19,7 @@ export interface AuthWsse {
 
 export interface AuthBearer {
   token?: string | null;
+  prefix?: string | null;
 }
 
 export interface AuthDigest {

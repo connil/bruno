@@ -114,7 +114,8 @@ const transformInsomniaRequestItem = (request, index, allRequests) => {
   } else if (authType === 'bearer') {
     brunoRequestItem.request.auth.mode = 'bearer';
     brunoRequestItem.request.auth.bearer = {
-      token: normalizeVariables(get(request, 'authentication.token', ''))
+      token: normalizeVariables(get(request, 'authentication.token', '')),
+      ...(typeof request.authentication.prefix === 'string' ? { prefix: normalizeVariables(request.authentication.prefix) } : {})
     };
   }
 

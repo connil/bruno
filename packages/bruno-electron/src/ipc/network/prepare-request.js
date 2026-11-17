@@ -3,7 +3,7 @@ const decomment = require('decomment');
 const crypto = require('node:crypto');
 const fs = require('node:fs');
 const { getTreePathFromCollectionToItem, mergeHeaders, mergeScripts, mergeVars, getFormattedCollectionOauth2Credentials, mergeAuth } = require('../../utils/collection');
-const { getEffectiveTags, getOwnTags, getInheritedTagsFromTreePath } = require('@usebruno/common');
+const { buildBearerAuthHeader, getEffectiveTags, getOwnTags, getInheritedTagsFromTreePath } = require('@usebruno/common');
 const { buildHeaderEntries } = require('@usebruno/js');
 const path = require('node:path');
 const { isLargeFile } = require('../../utils/filesystem');
@@ -31,7 +31,8 @@ const setAuthHeaders = (axiosRequest, request, collectionRoot) => {
         };
         break;
       case 'bearer':
-        axiosRequest.headers['Authorization'] = `Bearer ${get(collectionAuth, 'bearer.token', '')}`;
+        axiosRequest.bearerAuth = true;
+        axiosRequest.headers['Authorization'] = buildBearerAuthHeader(collectionAuth.bearer);
         break;
       case 'digest':
         axiosRequest.digestConfig = {
@@ -212,7 +213,8 @@ const setAuthHeaders = (axiosRequest, request, collectionRoot) => {
         };
         break;
       case 'bearer':
-        axiosRequest.headers['Authorization'] = `Bearer ${get(request, 'auth.bearer.token', '')}`;
+        axiosRequest.bearerAuth = true;
+        axiosRequest.headers['Authorization'] = buildBearerAuthHeader(request.auth.bearer);
         break;
       case 'digest':
         axiosRequest.digestConfig = {
@@ -420,6 +422,7 @@ const prepareRequest = async (item, collection = {}, abortController) => {
     pathname: item.pathname,
     tags: getEffectiveTags(getOwnTags(item), getInheritedTagsFromTreePath(requestTreePath)),
     pathParams: request.params?.filter((param) => param.type === 'path' && param.enabled !== false),
+    queryParams: request.params?.filter((param) => param.type === 'query'),
     settings,
     responseType: 'arraybuffer'
   };

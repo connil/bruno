@@ -3,6 +3,8 @@ export {
   getExplicitScheme,
   hasExplicitScheme,
   encodeUrl,
+  encodeBase64,
+  encodeUrlWithQueryParamSettings,
   parseQueryParams,
   buildQueryString,
   stripOrigin,

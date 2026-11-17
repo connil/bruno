@@ -11,7 +11,7 @@ const { ipcMain } = require('electron');
 const { each, get, extend, cloneDeep, merge } = require('lodash');
 const { NtlmClient } = require('axios-ntlm');
 const { VarsRuntime, AssertRuntime, ScriptRuntime, TestRuntime, formatErrorWithContextV2, trackUnresolvedVariables, getUnresolvedVariableCollector } = require('@usebruno/js');
-const { encodeUrl, hasExplicitScheme, DEFAULT_MAX_REDIRECTS } = require('@usebruno/common').utils;
+const { encodeUrl, encodeUrlWithQueryParamSettings, hasExplicitScheme, DEFAULT_MAX_REDIRECTS } = require('@usebruno/common').utils;
 const { extractPromptVariables } = require('@usebruno/common').utils;
 const { interpolateString } = require('./interpolate-string');
 const { resolveAwsV4Credentials, addAwsV4Interceptor } = require('./awsv4auth-helper');
@@ -639,7 +639,14 @@ const registerNetworkIpc = (mainWindow) => {
       request.url = `http://${request.url}`;
     }
 
-    if (request.settings?.encodeUrl) {
+    const urlWithQueryParamSettings = encodeUrlWithQueryParamSettings(
+      request.url,
+      request.queryParams,
+      request.settings?.encodeUrl
+    );
+    if (urlWithQueryParamSettings !== undefined) {
+      request.url = urlWithQueryParamSettings;
+    } else if (request.settings?.encodeUrl) {
       request.url = encodeUrl(request.url);
     }
 

@@ -1,7 +1,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { walk, defaultClassify, resolveDenylist } = require('./mount');
-const { parseRequest, parseEnvironment, parseCollection } = require('@usebruno/filestore');
+const { parseRequest, parseEnvironment, parseCollection, loadRequestCustomSettings } = require('@usebruno/filestore');
 
 const resolveConfigFile = (collectionPath) => {
   if (fs.existsSync(path.join(collectionPath, 'opencollection.yml'))) return 'opencollection.yml';
@@ -65,7 +65,7 @@ const readCollectionForApiSpec = async (collectionPath) => {
     switch (type) {
       case 'request':
         await collect('request', relativePath, async () => {
-          const item = await parseRequest(fs.readFileSync(absolutePath, 'utf8'), { format });
+          const item = loadRequestCustomSettings(collectionPath, absolutePath, await parseRequest(fs.readFileSync(absolutePath, 'utf8'), { format }));
           requests.push({ ...item, pathname: absolutePath, depth: relativePath.split(path.sep).filter(Boolean).length });
         });
         break;

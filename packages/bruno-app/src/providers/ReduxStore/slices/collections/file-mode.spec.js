@@ -220,6 +220,24 @@ describe('collectionChangeFileEvent — raw content', () => {
     expect(item.draft.raw).toBe('unsaved edit');
   });
 
+  test('preserves structured edits when a sidecar change leaves request bytes unchanged', () => {
+    const state = makeInitialState();
+    const item = state.collections[0].items[0];
+    item.request.params = [{ uid: 'param', name: 'q', value: 'value', type: 'query', enabled: true }];
+    item.draft = {
+      ...item,
+      request: { ...item.request, params: [{ ...item.request.params[0], encodeValue: false }] },
+      draft: null
+    };
+
+    const updated = reducer(state, collectionChangeFileEvent(makeFileEvent({
+      raw: item.raw,
+      request: makeRequest({ params: [{ ...item.request.params[0], encodeName: false }] })
+    })));
+
+    expect(updated.collections[0].items[0].draft.request.params[0].encodeValue).toBe(false);
+  });
+
   test('does not clear a genuine draft when raw is undefined on both the draft and the file event', () => {
     // Simulate a structured-edit draft on an item that has no raw content,
     // and a file change whose data also carries no raw. The undefined === undefined

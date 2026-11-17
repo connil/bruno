@@ -3,6 +3,18 @@ const { uuid, validationErrorWithMessages } = require('../utils/testUtils');
 const { requestSchema } = require('./index');
 
 describe('Request Schema Validation', () => {
+  it.each(['Token', ''])('preserves bearer prefix %j in validated save data', async (prefix) => {
+    const validated = await requestSchema.validate({
+      url: 'https://example.com',
+      method: 'GET',
+      headers: [],
+      params: [],
+      body: { mode: 'none' },
+      auth: { mode: 'bearer', bearer: { token: 'secret', prefix } }
+    });
+    expect(validated.auth.bearer).toEqual({ token: 'secret', prefix });
+  });
+
   it('request schema must validate successfully - simple request', async () => {
     const request = {
       url: 'https://restcountries.com/v2/alpha/in',
@@ -16,6 +28,32 @@ describe('Request Schema Validation', () => {
 
     const isValid = await requestSchema.validate(request);
     expect(isValid).toBeTruthy();
+  });
+
+  it('preserves per-query-parameter encoding settings', async () => {
+    const request = {
+      url: 'https://example.com/api?token=hello',
+      method: 'GET',
+      headers: [],
+      params: [{
+        uid: uuid(),
+        name: 'token',
+        value: 'hello',
+        type: 'query',
+        enabled: true,
+        encodeName: false,
+        encodeValue: true,
+        encodeValueAsBase64: true
+      }],
+      body: { mode: 'none' }
+    };
+
+    const validated = await requestSchema.validate(request);
+    expect(validated.params[0]).toMatchObject({
+      encodeName: false,
+      encodeValue: true,
+      encodeValueAsBase64: true
+    });
   });
 
   it('request schema must validate successfully - vars with dataType', async () => {

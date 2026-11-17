@@ -6,7 +6,7 @@ import { useSelector } from 'react-redux';
 import { parseBulkKeyValue, serializeBulkKeyValue } from 'utils/common/bulkKeyValueUtils';
 
 /**
- * Preserve hidden metadata (uid, description, annotations) across a bulk edit
+ * Preserve hidden metadata (uid, description, annotations, encoding options) across a bulk edit
  * by matching parsed params back to the original set using name + proximity.
  */
 const preserveMetadata = (parsed, original) => {
@@ -46,7 +46,10 @@ const preserveMetadata = (parsed, original) => {
         ...item,
         uid: best.param.uid,
         description: best.param.description || '',
-        annotations: best.param.annotations ?? null
+        annotations: best.param.annotations ?? null,
+        encodeName: best.param.encodeName,
+        encodeValue: best.param.encodeValue,
+        encodeValueAsBase64: best.param.encodeValueAsBase64
       };
     }
 

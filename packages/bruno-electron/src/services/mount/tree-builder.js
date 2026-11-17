@@ -6,6 +6,7 @@ const {
   defaultClassify
 } = require('../../utils/mount');
 const { sizeInMB } = require('../../utils/filesystem');
+const { loadRequestCustomSettingsWithMigration } = require('../../utils/request-custom-settings');
 
 const REQUEST_EXT_RE = /\.(bru|yml|yaml)$/i;
 const stripExt = (basename) => basename.replace(REQUEST_EXT_RE, '');
@@ -170,6 +171,18 @@ const buildTree = (collectionPath, parserResults, options = {}) => {
 
   const folderRoots = new Map();
   const requests = [];
+  const loadCustomSettings = (relativePath, data) => {
+    if (!data || typeof data !== 'object') return data;
+    // Keep sidecar overlays separate from the cache of standard file contents.
+    const item = data?.request ? {
+      ...data,
+      request: {
+        ...data.request,
+        params: data.request.params?.map((param) => ({ ...param }))
+      }
+    } : data;
+    return loadRequestCustomSettingsWithMigration(collectionPath, path.join(collectionPath, relativePath), item, defaultClassify(relativePath).format);
+  };
 
   for (const [relativePath, entry] of parserResults) {
     const cls = defaultClassify(relativePath);
@@ -181,19 +194,22 @@ const buildTree = (collectionPath, parserResults, options = {}) => {
       if (!entry.error) {
         const data = entry.data;
         if (data && typeof data === 'object' && 'collectionRoot' in data && 'brunoConfig' in data) {
-          hydrateRequestUuids(data.collectionRoot, null, collectionPath);
-          tree.root = data.collectionRoot;
+          tree.root = loadCustomSettings(relativePath, data.collectionRoot);
+          hydrateRequestUuids(tree.root, null, collectionPath);
           tree.brunoConfig = data.brunoConfig;
         } else {
-          hydrateRequestUuids(data, null, collectionPath);
-          tree.root = data;
+          tree.root = loadCustomSettings(relativePath, data);
+          hydrateRequestUuids(tree.root, null, collectionPath);
         }
         if (tree.root && typeof tree.root === 'object') {
           tree.root.pathname = path.join(collectionPath, relativePath);
         }
       }
     } else if (cls.type === 'folder') {
-      folderRoots.set(path.dirname(relativePath), entry);
+      folderRoots.set(path.dirname(relativePath), entry.error ? entry : {
+        ...entry,
+        data: loadCustomSettings(relativePath, entry.data)
+      });
     } else if (cls.type === 'environment') {
       tree.environments.push(buildEnvironmentNode(collectionPath, relativePath, entry, uidFor));
     } else {
@@ -204,11 +220,15 @@ const buildTree = (collectionPath, parserResults, options = {}) => {
   for (const { relativePath, entry } of requests) {
     const segments = path.dirname(relativePath).split(path.sep).filter((s) => s && s !== '.');
     const { cursor } = ensureFolder(collectionPath, tree.items, segments, uidFor);
+    const encodedEntry = entry.error ? entry : {
+      ...entry,
+      data: loadCustomSettings(relativePath, entry.data || {})
+    };
     const buildNode = buildRequestNode;
     cursor.push(buildNode(
       path.join(collectionPath, relativePath),
       path.basename(relativePath),
-      entry,
+      encodedEntry,
       uidOverrides,
       uidFor
     ));

@@ -65,6 +65,14 @@ interface QueryParam {
   value?: string;
 }
 
+interface QueryParamEncoding extends QueryParam {
+  type?: string;
+  enabled?: boolean;
+  encodeName?: boolean;
+  encodeValue?: boolean;
+  encodeValueAsBase64?: boolean;
+}
+
 interface BuildQueryStringOptions {
   encode?: boolean;
 }
@@ -227,6 +235,62 @@ const encodeUrl = (url: string): string => {
   return result;
 };
 
+const encodeBase64 = (value: string): string => {
+  const bytes = new TextEncoder().encode(value);
+  let binary = '';
+  bytes.forEach((byte) => {
+    binary += String.fromCharCode(byte);
+  });
+  return btoa(binary);
+};
+
+const encodeUrlWithQueryParamSettings = (
+  url: string,
+  params: QueryParamEncoding[] | undefined,
+  encodePath = false
+): string | undefined => {
+  const queryParams = params?.filter((param) => param.type === 'query' && param.enabled !== false) || [];
+  if (!queryParams.length || typeof url !== 'string') {
+    return undefined;
+  }
+
+  const queryIndex = url.indexOf('?');
+  const baseUrl = queryIndex === -1 ? url : url.slice(0, queryIndex);
+  const queryHashIndex = queryIndex === -1 ? -1 : url.indexOf('#', queryIndex);
+  const paramsWithHash = queryParams.map((param) => ({ ...param }));
+  if (queryHashIndex !== -1 && paramsWithHash.length) {
+    const hashEndIndex = url.indexOf('&', queryHashIndex);
+    const queryHash = url.slice(queryHashIndex, hashEndIndex === -1 ? undefined : hashEndIndex);
+    const pairsBeforeHash = url.slice(queryIndex + 1, queryHashIndex).split('&');
+    const paramIndex = Math.min(pairsBeforeHash.length - 1, paramsWithHash.length - 1);
+    const param = paramsWithHash[paramIndex];
+    const lastValue = param.value == null ? '' : String(param.value);
+    if (!lastValue.includes(queryHash)) {
+      param.value = `${lastValue}${queryHash}`;
+    }
+  }
+  const encodedQuery = paramsWithHash
+    .map((param) => {
+      const name = param.name == null ? '' : String(param.name);
+      if (!name.trim()) {
+        return '';
+      }
+
+      const encodeName = param.encodeName ?? true;
+      const encodedName = encodeName ? encodeURIComponent(name) : name;
+      const value = param.value == null ? '' : String(param.value);
+      const valueWithEncoding = param.encodeValueAsBase64 ? encodeBase64(value) : value;
+      const encodeValue = param.encodeValue ?? true;
+      const encodedValue = encodeValue ? encodeURIComponent(valueWithEncoding) : valueWithEncoding;
+      return `${encodedName}=${encodedValue}`;
+    })
+    .filter((pair) => pair.length > 0 && !pair.startsWith('='))
+    .join('&');
+  const encodedBaseUrl = encodePath ? encodeUrl(baseUrl) : baseUrl;
+
+  return `${encodedBaseUrl}${encodedQuery ? `?${encodedQuery}` : ''}`;
+};
+
 /**
  * Strip the origin (scheme + authority) from a URL, returning the path, query, and fragment.
  * Returns '/' if the URL has no path component.
@@ -337,6 +401,8 @@ export {
   getExplicitScheme,
   hasExplicitScheme,
   encodeUrl,
+  encodeBase64,
+  encodeUrlWithQueryParamSettings,
   parseQueryParams,
   buildQueryString,
   stripOrigin,
@@ -345,6 +411,7 @@ export {
   getMockResponseRouteKey,
   isSameOrigin,
   type QueryParam,
+  type QueryParamEncoding,
   type BuildQueryStringOptions,
   type ExtractQueryParamsOptions,
   type MockResponseRouteKeyInput

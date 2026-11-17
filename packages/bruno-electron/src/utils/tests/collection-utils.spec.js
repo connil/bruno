@@ -1,6 +1,31 @@
 const { transformRequestToSaveToFilesystem } = require('../collection');
 
 describe('transformRequestToSaveToFilesystem', () => {
+  it('preserves query encoding options when resequencing requests', () => {
+    const item = {
+      type: 'http-request',
+      request: {
+        params: [{
+          type: 'query',
+          name: 'token',
+          value: 'hello',
+          enabled: true,
+          encodeName: false,
+          encodeValue: true,
+          encodeValueAsBase64: true
+        }],
+        headers: [],
+        body: { mode: 'none' }
+      }
+    };
+
+    expect(transformRequestToSaveToFilesystem(item).request.params[0]).toMatchObject({
+      encodeName: false,
+      encodeValue: true,
+      encodeValueAsBase64: true
+    });
+  });
+
   it('should preserve all relevant fields when transforming request', () => {
     const testItem = {
       uid: 'test-uid-123',

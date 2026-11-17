@@ -48,13 +48,25 @@ const QueryParams = ({ item, collection }) => {
   const handleRun = () => dispatch(sendRequest(item, collection.uid));
 
   const handleQueryParamsChange = useCallback((updatedParams) => {
-    const paramsWithType = updatedParams.map((p) => ({ ...p, type: 'query' }));
+    const paramsWithType = updatedParams.map((p) => ({
+      ...p,
+      type: 'query',
+      encodeName: p.encodeName ?? true,
+      encodeValue: p.encodeValue ?? true,
+      encodeValueAsBase64: p.encodeValueAsBase64 ?? false
+    }));
     dispatch(setQueryParams({
       collectionUid: collection.uid,
       itemUid: item.uid,
       params: paramsWithType
     }));
   }, [dispatch, collection.uid, item.uid]);
+
+  const handleQueryEncodingChange = (rowUid, key, value) => {
+    handleQueryParamsChange(queryParams.map((param) =>
+      param.uid === rowUid ? { ...param, [key]: value } : param
+    ));
+  };
 
   const handlePathParamChange = useCallback(
     (rowUid, key, value) => {
@@ -150,6 +162,30 @@ const QueryParams = ({ item, collection }) => {
           variablesAutocomplete={true}
           placeholder={!value ? 'Value' : ''}
         />
+      )
+    },
+    {
+      key: 'encoding',
+      name: 'Encode',
+      width: '90px',
+      render: ({ row, isLastEmptyRow }) => (
+        <div className="flex items-center gap-2">
+          {[
+            { key: 'encodeName', label: 'URL-encode name', defaultValue: true },
+            { key: 'encodeValue', label: 'URL-encode value', defaultValue: true },
+            { key: 'encodeValueAsBase64', label: 'Base64-encode value', defaultValue: false }
+          ].map(({ key, label, defaultValue }) => (
+            <input
+              key={key}
+              type="checkbox"
+              title={label}
+              aria-label={`${label} for ${row.name || 'query parameter'}`}
+              checked={row[key] ?? defaultValue}
+              disabled={isLastEmptyRow}
+              onChange={(e) => handleQueryEncodingChange(row.uid, key, e.target.checked)}
+            />
+          ))}
+        </div>
       )
     },
     descriptionColumnQuery

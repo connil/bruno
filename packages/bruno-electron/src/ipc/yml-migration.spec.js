@@ -177,6 +177,23 @@ describe('migrateCollectionOnDisk', () => {
     jest.restoreAllMocks();
   });
 
+  it('keeps bearer prefixes in the sidecar across collection, folder and request migration', async () => {
+    const auth = '\nauth:bearer {\n  token: secret\n  prefix: Custom\n}\n';
+    fs.writeFileSync(filePath('collection.bru'), COLLECTION_BRU + auth);
+    fs.writeFileSync(filePath('api', 'folder.bru'), FOLDER_BRU + auth);
+    fs.writeFileSync(filePath('ping.bru'), REQUEST_BRU.replace('url: http://localhost:3000/ping', 'url: http://localhost:3000/ping\n  auth: bearer') + auth);
+    await runMigration();
+    const sidecar = JSON.parse(fs.readFileSync(filePath('.bruno-custom.json'), 'utf8'));
+    expect(sidecar.requests).toMatchObject({
+      '/': { bearerTokenPrefix: 'Custom' },
+      'api/': { bearerTokenPrefix: 'Custom' },
+      'ping': { bearerTokenPrefix: 'Custom' }
+    });
+    for (const filename of ['opencollection.yml', path.join('api', 'folder.yml'), 'ping.yml']) {
+      expect(fs.readFileSync(filePath(filename), 'utf8')).not.toContain('prefix:');
+    }
+  });
+
   it('converts every .bru file, removes the sources and leaves other files untouched', async () => {
     const { brunoConfig, tabPathMap } = await runMigration();
 
@@ -228,6 +245,61 @@ describe('migrateCollectionOnDisk', () => {
     expect(events.filter((e) => e.phase === 'parsing').length).toBe(5);
     expect(events.filter((e) => e.phase === 'writing').length).toBe(5);
     expect(events.filter((e) => e.phase === 'finalizing').length).toBe(6);
+  });
+
+  it('carries legacy inline encoding and existing sidecar overrides into extensionless YML keys', async () => {
+    fs.writeFileSync(filePath('ping.bru'), `${REQUEST_BRU}
+params:query {
+  @encodeName(false)
+  @encodeValueAsBase64(true)
+  q: a/b
+}
+params:path {
+  ~id: other
+  id: selected
+}
+`);
+    fs.writeFileSync(filePath('.bruno-query-encoding.json'), JSON.stringify({
+      version: 1,
+      requests: { ping: [{ name: 'q', occurrence: 0, encodeValue: false }] }
+    }));
+    await runMigration();
+    const { parseRequest, loadRequestCustomSettings } = require('@usebruno/filestore');
+    const parsed = parseRequest(fs.readFileSync(filePath('ping.yml'), 'utf8'), { format: 'yml' });
+    expect(parsed.request.params.filter((param) => param.type === 'path')).toHaveLength(1);
+    const loaded = loadRequestCustomSettings(collectionDir, filePath('ping.yml'), parsed);
+    expect(loaded.request.params[0]).toEqual(expect.objectContaining({
+      encodeName: false,
+      encodeValue: false,
+      encodeValueAsBase64: true
+    }));
+    expect(loaded.request.params.filter((param) => param.type === 'path')).toMatchObject([
+      { value: 'other', enabled: false }, { value: 'selected', enabled: true }
+    ]);
+    expect(fs.readFileSync(filePath('ping.yml'), 'utf8')).not.toContain('other');
+    expect(fs.existsSync(filePath('.bruno-query-encoding.json'))).toBe(false);
+    expect(Object.keys(JSON.parse(fs.readFileSync(filePath('.bruno-custom.json'), 'utf8')).requests)).toEqual(['ping']);
+  });
+
+  it('rolls back newly migrated encoding when migration is cancelled during writing', async () => {
+    fs.writeFileSync(filePath('ping.bru'), `${REQUEST_BRU}
+params:query {
+  @encodeValue(false)
+  q: a/b
+}
+`);
+    fs.writeFileSync(filePath('.bruno-query-encoding.json'), JSON.stringify({
+      version: 1, requests: { ping: [{ name: 'q', occurrence: 0, encodeName: false }] }
+    }));
+    const before = snapshotDisk();
+    await expect(runMigration({
+      emitProgress: (phase) => {
+        if (phase === 'writing' && fs.existsSync(filePath('.bruno-custom.json'))) {
+          throw new Error('cancel during writing');
+        }
+      }
+    })).rejects.toThrow('cancel during writing');
+    expect(snapshotDisk()).toEqual(before);
   });
 
   it('aborts before writing anything when a file fails to parse', async () => {

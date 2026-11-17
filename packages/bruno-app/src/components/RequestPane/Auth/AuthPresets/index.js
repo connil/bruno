@@ -6,9 +6,9 @@ import MenuDropdown from 'ui/MenuDropdown';
 import Button from 'ui/Button';
 
 const oauth2Defaults = {
-  scope: '{{oauth_scope}}',
+  scope: '{{scope}}',
   credentialsPlacement: 'body',
-  credentialsId: 'credentials',
+  credentialsId: 'credentials_{{credId}}',
   tokenPlacement: 'header',
   tokenHeaderPrefix: 'Bearer',
   tokenQueryKey: 'access_token',
@@ -17,11 +17,9 @@ const oauth2Defaults = {
 
 const presetsByMode = {
   basic: [
-    { id: 'auth-credentials', label: 'auth_username / auth_password', content: { username: '{{auth_username}}', password: '{{auth_password}}' } },
     { id: 'credentials', label: 'username / password', content: { username: '{{username}}', password: '{{password}}' } }
   ],
   bearer: [
-    { id: 'auth-token', label: 'auth_token', content: { token: '{{auth_token}}' } },
     { id: 'access-token', label: 'access_token', content: { token: '{{access_token}}' } }
   ],
   apikey: [
@@ -32,12 +30,12 @@ const presetsByMode = {
     {
       id: 'authorization-code-pkce',
       label: 'Authorization Code with PKCE',
-      content: { ...oauth2Defaults, grantType: 'authorization_code', authorizationUrl: '{{oauth_authorization_url}}', accessTokenUrl: '{{oauth_token_url}}', clientId: '{{oauth_client_id}}', pkce: true, autoFetchToken: true }
+      content: { ...oauth2Defaults, grantType: 'authorization_code', authorizationUrl: '{{authorizationUrl}}', accessTokenUrl: '{{tokenUrl}}', clientId: '{{clientId}}', pkce: true, autoFetchToken: true }
     },
     {
       id: 'authorization-code',
       label: 'Authorization Code',
-      content: { ...oauth2Defaults, grantType: 'authorization_code', authorizationUrl: '{{oauth_authorization_url}}', accessTokenUrl: '{{oauth_token_url}}', clientId: '{{oauth_client_id}}', clientSecret: '{{oauth_client_secret}}', pkce: false, autoFetchToken: true }
+      content: { ...oauth2Defaults, grantType: 'authorization_code', authorizationUrl: '{{authorizationUrl}}', accessTokenUrl: '{{tokenUrl}}', clientId: '{{clientId}}', clientSecret: '{{clientSecret}}', pkce: false, autoFetchToken: true }
     },
     {
       id: 'client-credentials',
@@ -46,13 +44,13 @@ const presetsByMode = {
     },
     {
       id: 'password',
-      label: 'Password Credentials (legacy)',
-      content: { ...oauth2Defaults, grantType: 'password', accessTokenUrl: '{{oauth_token_url}}', clientId: '{{oauth_client_id}}', clientSecret: '{{oauth_client_secret}}', username: '{{oauth_username}}', password: '{{oauth_password}}' }
+      label: 'Password Credentials',
+      content: { ...oauth2Defaults, grantType: 'password', accessTokenUrl: '{{tokenUrl}}', clientId: '{{clientId}}', clientSecret: '{{clientSecret}}', username: '{{username}}', password: '{{password}}' }
     },
     {
       id: 'implicit',
-      label: 'Implicit (legacy)',
-      content: { ...oauth2Defaults, grantType: 'implicit', authorizationUrl: '{{oauth_authorization_url}}', clientId: '{{oauth_client_id}}', autoFetchToken: true }
+      label: 'Implicit',
+      content: { ...oauth2Defaults, grantType: 'implicit', authorizationUrl: '{{authorizationUrl}}', clientId: '{{clientId}}', autoFetchToken: true }
     }
   ]
 };

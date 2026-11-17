@@ -3,7 +3,7 @@ const path = require('node:path');
 const { ipcMain } = require('electron');
 const { sanitizeName, createDirectory, writeFile, safeWriteFileSync, getCollectionStats } = require('./filesystem');
 const { generateUidBasedOnHash, stringifyJson } = require('./common');
-const { stringifyRequestViaWorker, stringifyCollection, stringifyEnvironment, stringifyFolder, DEFAULT_COLLECTION_FORMAT } = require('@usebruno/filestore');
+const { stringifyRequestViaWorker, stringifyCollection, stringifyEnvironment, stringifyFolder, saveRequestCustomSettings, DEFAULT_COLLECTION_FORMAT } = require('@usebruno/filestore');
 const { transformProxyConfig } = require('@usebruno/requests/dist/cjs');
 
 /**
@@ -41,6 +41,7 @@ async function importCollection(collection, collectionLocation, mainWindow, uniq
         let sanitizedFilename = sanitizeName(item.filename || `${item.name}.${format}`);
         const content = await stringifyRequestViaWorker(item, { format });
         const filePath = path.join(currentPath, sanitizedFilename);
+        saveRequestCustomSettings(collectionPath, filePath, item, format);
         safeWriteFileSync(filePath, content);
       }
       if (item.type === 'folder') {

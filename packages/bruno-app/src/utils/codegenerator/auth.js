@@ -1,6 +1,6 @@
 import get from 'lodash/get';
 import { find } from 'lodash';
-import { interpolate } from '@usebruno/common';
+import { buildBearerAuthHeader, interpolate } from '@usebruno/common';
 import { getAllVariables } from 'utils/collections/index';
 
 export const getAuthHeaders = (requestAuth, collection = null, item = null) => {
@@ -27,7 +27,7 @@ export const getAuthHeaders = (requestAuth, collection = null, item = null) => {
         {
           enabled: true,
           name: 'Authorization',
-          value: `Bearer ${get(requestAuth, 'bearer.token', '')}`
+          value: buildBearerAuthHeader(requestAuth.bearer)
         }
       ];
     case 'apikey':
